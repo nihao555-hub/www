@@ -106,6 +106,8 @@ export type SiteSpec = {
   themeId: string
   /** short reason the AI picked this theme (shown in the generation log) */
   themeReason?: string
+  /** id of the design family (layout DNA) the AI picked for this brand */
+  designId?: string
   pages: SpecPage[]
   /** brand/category icons fetched from 21st.dev, surfaced as a trust strip */
   brandIcons?: BrandIcon[]
@@ -309,6 +311,8 @@ export function normalizeSiteSpec(
   fallbackName: string,
   validThemeIds: string[] = [],
   fallbackThemeId = 'electric-indigo',
+  validDesignIds: string[] = [],
+  fallbackDesignId = 'minimal-clean',
 ): SiteSpec {
   const obj = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
 
@@ -321,6 +325,12 @@ export function normalizeSiteSpec(
     requestedTheme && (validThemeIds.length === 0 || validThemeIds.includes(requestedTheme))
       ? requestedTheme
       : fallbackThemeId
+
+  const requestedDesign = asString(obj.designId)
+  const designId =
+    requestedDesign && (validDesignIds.length === 0 || validDesignIds.includes(requestedDesign))
+      ? requestedDesign
+      : fallbackDesignId
 
   // Build pages: prefer the new `pages` array, else wrap legacy single-page.
   let pages: SpecPage[] = []
@@ -375,6 +385,7 @@ export function normalizeSiteSpec(
     tagline: asString(obj.tagline) || undefined,
     themeId,
     themeReason: asString(obj.themeReason) || undefined,
+    designId,
     pages,
     meta: {
       title: asString(metaRaw.title, siteName) || siteName,

@@ -4,6 +4,7 @@ import * as React from 'react'
 import Image from 'next/image'
 
 import { getTheme } from '@/lib/ai/themes'
+import { getDesign, type DesignFamily } from '@/lib/ai/design-systems'
 import type { SiteSpec, SpecPage, SpecSection } from '@/lib/ai/site-spec'
 
 import { SpecIcon } from './Icon'
@@ -12,6 +13,132 @@ type Props = {
   spec: SiteSpec
   /** absolute or relative URLs for the uploaded product images, by index */
   images: string[]
+}
+
+/* -------------------------------------------------------------------------- */
+/* Design-family runtime helpers                                               */
+/* -------------------------------------------------------------------------- */
+
+const DesignContext = React.createContext<DesignFamily>(getDesign())
+const useDesign = () => React.useContext(DesignContext)
+
+/** Max-width container class for the active design family. */
+function containerClass(d: DesignFamily): string {
+  switch (d.container) {
+    case 'narrow':
+      return 'max-w-4xl'
+    case 'wide':
+      return 'max-w-7xl'
+    default:
+      return 'max-w-6xl'
+  }
+}
+
+/** Vertical section padding for the active design family. */
+function sectionPadClass(d: DesignFamily): string {
+  switch (d.spacing) {
+    case 'tight':
+      return 'py-12 sm:py-16'
+    case 'roomy':
+      return 'py-24 sm:py-32'
+    default:
+      return 'py-20 sm:py-24'
+  }
+}
+
+/** Button corner radius for the active design family. */
+function btnRadius(d: DesignFamily, theme: ReturnType<typeof getTheme>): string {
+  switch (d.button) {
+    case 'pill':
+      return '9999px'
+    case 'square':
+      return '2px'
+    default:
+      return `calc(${theme.radius} * 1.4)`
+  }
+}
+
+/** Base card style (fill / border / radius / shadow) for the active family. */
+function cardStyle(
+  d: DesignFamily,
+  theme: ReturnType<typeof getTheme>,
+): React.CSSProperties {
+  const c = theme.colors
+  switch (d.cardStyle) {
+    case 'outline':
+      return {
+        background: 'transparent',
+        border: `1.5px solid ${c.border}`,
+        borderRadius: `calc(${theme.radius} * 0.6)`,
+      }
+    case 'flat':
+      return {
+        background: c.card,
+        border: 'none',
+        borderRadius: '2px',
+      }
+    case 'elevated':
+      return {
+        background: c.card,
+        border: `1px solid ${c.border}`,
+        borderRadius: `calc(${theme.radius} * 2)`,
+        boxShadow: '0 24px 50px -24px rgba(0,0,0,0.30)',
+      }
+    default: // soft
+      return {
+        background: c.card,
+        border: `1px solid ${c.border}`,
+        borderRadius: `calc(${theme.radius} * 1.6)`,
+        boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+      }
+  }
+}
+
+/** Decorative background layer (gradient blobs / grid / dots) for a section. */
+const Decoration: React.FC<{ theme: ReturnType<typeof getTheme> }> = ({ theme }) => {
+  const d = useDesign()
+  const c = theme.colors
+  if (d.decoration === 'none') return null
+  if (d.decoration === 'blobs') {
+    return (
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+        <div
+          className="absolute -left-24 -top-24 h-72 w-72 rounded-full blur-3xl"
+          style={{ background: `color-mix(in oklab, ${c.primary} 22%, transparent)` }}
+        />
+        <div
+          className="absolute -bottom-28 -right-16 h-80 w-80 rounded-full blur-3xl"
+          style={{ background: `color-mix(in oklab, ${c.accent} 20%, transparent)` }}
+        />
+      </div>
+    )
+  }
+  if (d.decoration === 'grid') {
+    return (
+      <div
+        className="pointer-events-none absolute inset-0"
+        aria-hidden
+        style={{
+          backgroundImage: `linear-gradient(${c.border} 1px, transparent 1px), linear-gradient(90deg, ${c.border} 1px, transparent 1px)`,
+          backgroundSize: '44px 44px',
+          opacity: 0.4,
+          maskImage: 'radial-gradient(ellipse at center, black 30%, transparent 80%)',
+        }}
+      />
+    )
+  }
+  // dots
+  return (
+    <div
+      className="pointer-events-none absolute inset-0"
+      aria-hidden
+      style={{
+        backgroundImage: `radial-gradient(${c.border} 1.3px, transparent 1.3px)`,
+        backgroundSize: '22px 22px',
+        opacity: 0.5,
+      }}
+    />
+  )
 }
 
 function img(images: string[], index?: number): string | undefined {
@@ -29,6 +156,7 @@ function urlToPath(url: string): string | null {
 
 export const SiteRenderer: React.FC<Props> = ({ spec, images }) => {
   const theme = getTheme(spec.themeId)
+  const design = getDesign(spec.designId)
   const c = theme.colors
   const [active, setActive] = React.useState('')
 
@@ -65,45 +193,47 @@ export const SiteRenderer: React.FC<Props> = ({ spec, images }) => {
   const headingFont = `'${theme.fonts.heading}', system-ui, sans-serif`
 
   return (
-    <div style={wrapStyle} className="min-h-screen w-full antialiased">
-      <Header
-        spec={spec}
-        theme={theme}
-        active={page.path}
-        onNav={go}
-        headingFont={headingFont}
-      />
+    <DesignContext.Provider value={design}>
+      <div style={wrapStyle} className="min-h-screen w-full antialiased">
+        <Header
+          spec={spec}
+          theme={theme}
+          active={page.path}
+          onNav={go}
+          headingFont={headingFont}
+        />
 
-      <main>
-        {page.hero ? (
-          <Hero
-            hero={page.hero}
-            images={images}
-            theme={theme}
-            headingFont={headingFont}
-            isHome={page.path === ''}
-            onCta={onCta}
-          />
-        ) : null}
+        <main>
+          {page.hero ? (
+            <Hero
+              hero={page.hero}
+              images={images}
+              theme={theme}
+              headingFont={headingFont}
+              isHome={page.path === ''}
+              onCta={onCta}
+            />
+          ) : null}
 
-        {spec.brandIcons && spec.brandIcons.length && page.path === '' ? (
-          <BrandStrip icons={spec.brandIcons} theme={theme} />
-        ) : null}
+          {spec.brandIcons && spec.brandIcons.length && page.path === '' ? (
+            <BrandStrip icons={spec.brandIcons} theme={theme} />
+          ) : null}
 
-        {page.sections.map((section, i) => (
-          <SectionView
-            key={i}
-            section={section}
-            images={images}
-            theme={theme}
-            headingFont={headingFont}
-            onCta={onCta}
-          />
-        ))}
-      </main>
+          {page.sections.map((section, i) => (
+            <SectionView
+              key={i}
+              section={section}
+              images={images}
+              theme={theme}
+              headingFont={headingFont}
+              onCta={onCta}
+            />
+          ))}
+        </main>
 
-      <Footer spec={spec} theme={theme} onNav={go} headingFont={headingFont} />
-    </div>
+        <Footer spec={spec} theme={theme} onNav={go} headingFont={headingFont} />
+      </div>
+    </DesignContext.Provider>
   )
 }
 
@@ -119,6 +249,7 @@ const Header: React.FC<{
   headingFont: string
 }> = ({ spec, theme, active, onNav, headingFont }) => {
   const c = theme.colors
+  const d = useDesign()
   return (
     <header
       className="sticky top-0 z-50 w-full backdrop-blur"
@@ -127,7 +258,7 @@ const Header: React.FC<{
         borderBottom: `1px solid ${c.border}`,
       }}
     >
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
+      <div className={`mx-auto flex h-16 ${containerClass(d)} items-center justify-between px-5`}>
         <button
           onClick={() => onNav('')}
           className="flex flex-col items-start leading-none"
@@ -164,8 +295,8 @@ const Header: React.FC<{
 
         <button
           onClick={() => onNav('contact')}
-          className="rounded-full px-4 py-2 text-sm font-semibold shadow-sm transition-transform hover:scale-[1.03]"
-          style={{ background: c.primary, color: c.primaryForeground }}
+          className="px-4 py-2 text-sm font-semibold shadow-sm transition-transform hover:scale-[1.03]"
+          style={{ background: c.primary, color: c.primaryForeground, borderRadius: btnRadius(d, theme) }}
         >
           {contactLabel(spec)}
         </button>
@@ -203,36 +334,122 @@ function contactLabel(spec: SiteSpec): string {
 /* Hero                                                                        */
 /* -------------------------------------------------------------------------- */
 
-const Hero: React.FC<{
-  hero: NonNullable<SpecPage['hero']>
+type HeroData = NonNullable<SpecPage['hero']>
+
+type HeroProps = {
+  hero: HeroData
   images: string[]
   theme: ReturnType<typeof getTheme>
   headingFont: string
   isHome: boolean
   onCta: (e: React.MouseEvent, url: string) => void
-}> = ({ hero, images, theme, headingFont, isHome, onCta }) => {
-  const c = theme.colors
-  const bg = img(images, hero.imageIndex)
+}
 
+const Hero: React.FC<HeroProps> = (props) => {
+  const d = useDesign()
+  switch (d.hero) {
+    case 'split':
+      return <HeroSplit {...props} />
+    case 'centered':
+      return <HeroCentered {...props} />
+    case 'editorial':
+      return <HeroEditorial {...props} />
+    case 'card':
+      return <HeroCard {...props} />
+    default:
+      return <HeroOverlay {...props} />
+  }
+}
+
+/** Badges rendered for light backgrounds (used by non-overlay heroes). */
+const HeroBadgesLight: React.FC<{ hero: HeroData; theme: ReturnType<typeof getTheme> }> = ({
+  hero,
+  theme,
+}) => {
+  const c = theme.colors
+  if (!hero.badges || !hero.badges.length) return null
+  return (
+    <div className="mb-5 flex flex-wrap gap-2">
+      {hero.badges.map((b, i) => (
+        <span
+          key={i}
+          className="rounded-full px-3 py-1 text-xs font-semibold tracking-wide"
+          style={{
+            background: `color-mix(in oklab, ${c.primary} 12%, transparent)`,
+            color: c.primary,
+            border: `1px solid color-mix(in oklab, ${c.primary} 24%, transparent)`,
+          }}
+        >
+          {b}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+const HeroCtas: React.FC<{
+  hero: HeroData
+  theme: ReturnType<typeof getTheme>
+  onCta: HeroProps['onCta']
+  onImage?: boolean
+}> = ({ hero, theme, onCta, onImage }) => {
+  const c = theme.colors
+  const d = useDesign()
+  if (!hero.ctas || !hero.ctas.length) return null
+  return (
+    <div className="mt-8 flex flex-wrap gap-3">
+      {hero.ctas.map((cta, i) => (
+        <a
+          key={i}
+          href={cta.url || '#'}
+          onClick={(e) => onCta(e, cta.url)}
+          className="px-6 py-3 text-sm font-bold shadow-lg transition-transform hover:scale-[1.04]"
+          style={{
+            borderRadius: btnRadius(d, theme),
+            ...(i === 0
+              ? { background: c.primary, color: c.primaryForeground }
+              : onImage
+                ? {
+                    background: 'rgba(255,255,255,0.10)',
+                    color: '#fff',
+                    border: '1.5px solid rgba(255,255,255,0.55)',
+                  }
+                : {
+                    background: 'transparent',
+                    color: c.foreground,
+                    border: `1.5px solid ${c.border}`,
+                  }),
+          }}
+        >
+          {cta.label}
+        </a>
+      ))}
+    </div>
+  )
+}
+
+function headlineClass(d: DesignFamily, big?: boolean): string {
+  const base = big
+    ? 'text-5xl font-extrabold leading-[1.03] sm:text-6xl md:text-7xl'
+    : 'text-4xl font-extrabold leading-[1.08] sm:text-5xl md:text-6xl'
+  return d.uppercaseHeadings ? `${base} uppercase tracking-tight` : `${base} tracking-tight`
+}
+
+/* Variant: full-bleed image with dark overlay (classic, high-contrast). */
+const HeroOverlay: React.FC<HeroProps> = ({ hero, images, theme, headingFont, isHome, onCta }) => {
+  const c = theme.colors
+  const d = useDesign()
+  const bg = img(images, hero.imageIndex)
   return (
     <section
       className="relative flex w-full items-center overflow-hidden"
       style={{ minHeight: isHome ? '88vh' : '46vh' }}
     >
       {bg ? (
-        <Image
-          src={bg}
-          alt={hero.headline}
-          fill
-          priority
-          sizes="100vw"
-          className="object-cover"
-        />
+        <Image src={bg} alt={hero.headline} fill priority sizes="100vw" className="object-cover" />
       ) : (
         <div className="absolute inset-0" style={{ background: c.primary }} />
       )}
-
-      {/* high-contrast overlay so light text is always readable */}
       <div
         className="absolute inset-0"
         style={{
@@ -240,8 +457,7 @@ const Hero: React.FC<{
             'linear-gradient(105deg, rgba(8,10,18,0.86) 0%, rgba(8,10,18,0.66) 45%, rgba(8,10,18,0.32) 100%)',
         }}
       />
-
-      <div className="relative mx-auto w-full max-w-6xl px-5 py-20">
+      <div className={`relative mx-auto w-full ${containerClass(d)} px-5 py-20`}>
         <div className="max-w-2xl">
           {hero.badges && hero.badges.length ? (
             <div className="mb-5 flex flex-wrap gap-2">
@@ -260,14 +476,12 @@ const Hero: React.FC<{
               ))}
             </div>
           ) : null}
-
           <h1
-            className="text-4xl font-extrabold leading-[1.08] tracking-tight text-white sm:text-5xl md:text-6xl"
+            className={`${headlineClass(d)} text-white`}
             style={{ fontFamily: headingFont, textShadow: '0 2px 24px rgba(0,0,0,0.45)' }}
           >
             {hero.headline}
           </h1>
-
           {hero.subheadline ? (
             <p
               className="mt-5 max-w-xl text-lg leading-relaxed text-white/85"
@@ -276,30 +490,205 @@ const Hero: React.FC<{
               {hero.subheadline}
             </p>
           ) : null}
+          <HeroCtas hero={hero} theme={theme} onCta={onCta} onImage />
+        </div>
+      </div>
+    </section>
+  )
+}
 
-          {hero.ctas && hero.ctas.length ? (
-            <div className="mt-8 flex flex-wrap gap-3">
-              {hero.ctas.map((cta, i) => (
-                <a
+/* Variant: copy on the left, framed product image card on the right. */
+const HeroSplit: React.FC<HeroProps> = ({ hero, images, theme, headingFont, isHome, onCta }) => {
+  const c = theme.colors
+  const d = useDesign()
+  const bg = img(images, hero.imageIndex)
+  return (
+    <section
+      className="relative w-full overflow-hidden"
+      style={{ background: c.muted, minHeight: isHome ? '82vh' : '40vh' }}
+    >
+      <Decoration theme={theme} />
+      <div
+        className={`relative mx-auto grid w-full ${containerClass(d)} items-center gap-10 px-5 py-20 lg:grid-cols-2 lg:py-28`}
+      >
+        <div>
+          <HeroBadgesLight hero={hero} theme={theme} />
+          <h1
+            className={headlineClass(d)}
+            style={{ fontFamily: headingFont, color: c.foreground }}
+          >
+            {hero.headline}
+          </h1>
+          {hero.subheadline ? (
+            <p className="mt-5 max-w-xl text-lg leading-relaxed" style={{ color: c.mutedForeground }}>
+              {hero.subheadline}
+            </p>
+          ) : null}
+          <HeroCtas hero={hero} theme={theme} onCta={onCta} />
+        </div>
+        {bg ? (
+          <div
+            className="relative aspect-[4/3] w-full overflow-hidden"
+            style={{
+              borderRadius: `calc(${theme.radius} * 1.4)`,
+              border: `1px solid ${c.border}`,
+              boxShadow: '0 30px 70px -28px rgba(0,0,0,0.4)',
+            }}
+          >
+            <Image src={bg} alt={hero.headline} fill priority sizes="(max-width:1024px) 100vw, 50vw" className="object-cover" />
+          </div>
+        ) : null}
+      </div>
+    </section>
+  )
+}
+
+/* Variant: centered copy over soft gradient blobs, image panel below. */
+const HeroCentered: React.FC<HeroProps> = ({ hero, images, theme, headingFont, isHome, onCta }) => {
+  const c = theme.colors
+  const d = useDesign()
+  const bg = img(images, hero.imageIndex)
+  return (
+    <section
+      className="relative w-full overflow-hidden"
+      style={{
+        background: `linear-gradient(180deg, ${c.muted} 0%, ${c.background} 100%)`,
+      }}
+    >
+      <Decoration theme={theme} />
+      <div className={`relative mx-auto w-full ${containerClass(d)} px-5 pt-24 ${isHome ? 'pb-12' : 'pb-12'} text-center`}>
+        <div className="mx-auto max-w-3xl">
+          {hero.badges && hero.badges.length ? (
+            <div className="mb-5 flex flex-wrap justify-center gap-2">
+              {hero.badges.map((b, i) => (
+                <span
                   key={i}
-                  href={cta.url || '#'}
-                  onClick={(e) => onCta(e, cta.url)}
-                  className="rounded-full px-6 py-3 text-sm font-bold shadow-lg transition-transform hover:scale-[1.04]"
-                  style={
-                    i === 0
-                      ? { background: c.primary, color: c.primaryForeground }
-                      : {
-                          background: 'rgba(255,255,255,0.10)',
-                          color: '#fff',
-                          border: '1.5px solid rgba(255,255,255,0.55)',
-                        }
-                  }
+                  className="rounded-full px-3 py-1 text-xs font-semibold tracking-wide"
+                  style={{
+                    background: `color-mix(in oklab, ${c.primary} 12%, transparent)`,
+                    color: c.primary,
+                    border: `1px solid color-mix(in oklab, ${c.primary} 24%, transparent)`,
+                  }}
                 >
-                  {cta.label}
-                </a>
+                  {b}
+                </span>
               ))}
             </div>
           ) : null}
+          <h1
+            className={`${headlineClass(d, true)} mx-auto`}
+            style={{ fontFamily: headingFont, color: c.foreground }}
+          >
+            {hero.headline}
+          </h1>
+          {hero.subheadline ? (
+            <p
+              className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed sm:text-xl"
+              style={{ color: c.mutedForeground }}
+            >
+              {hero.subheadline}
+            </p>
+          ) : null}
+          <div className="flex justify-center">
+            <HeroCtas hero={hero} theme={theme} onCta={onCta} />
+          </div>
+        </div>
+        {bg && isHome ? (
+          <div
+            className="relative mx-auto mt-14 aspect-[16/8] w-full max-w-5xl overflow-hidden"
+            style={{
+              borderRadius: `calc(${theme.radius} * 1.8)`,
+              border: `1px solid ${c.border}`,
+              boxShadow: '0 40px 90px -40px rgba(0,0,0,0.45)',
+            }}
+          >
+            <Image src={bg} alt={hero.headline} fill priority sizes="100vw" className="object-cover" />
+          </div>
+        ) : null}
+      </div>
+    </section>
+  )
+}
+
+/* Variant: oversized editorial headline, image as a wide band below. */
+const HeroEditorial: React.FC<HeroProps> = ({ hero, images, theme, headingFont, isHome, onCta }) => {
+  const c = theme.colors
+  const d = useDesign()
+  const bg = img(images, hero.imageIndex)
+  return (
+    <section className="relative w-full" style={{ background: c.background }}>
+      <div className={`relative mx-auto w-full ${containerClass(d)} px-5 pt-24 pb-12`}>
+        <div className="max-w-4xl">
+          <HeroBadgesLight hero={hero} theme={theme} />
+          <h1
+            className={`${d.uppercaseHeadings ? 'uppercase ' : ''}text-5xl font-light leading-[1.02] tracking-tight sm:text-6xl md:text-7xl`}
+            style={{ fontFamily: headingFont, color: c.foreground }}
+          >
+            {hero.headline}
+          </h1>
+          {hero.subheadline ? (
+            <p className="mt-8 max-w-2xl text-lg leading-relaxed" style={{ color: c.mutedForeground }}>
+              {hero.subheadline}
+            </p>
+          ) : null}
+          <HeroCtas hero={hero} theme={theme} onCta={onCta} />
+        </div>
+      </div>
+      {bg ? (
+        <div
+          className="relative w-full overflow-hidden"
+          style={{ height: isHome ? '52vh' : '32vh' }}
+        >
+          <Image src={bg} alt={hero.headline} fill priority sizes="100vw" className="object-cover" />
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
+/* Variant: full image with an offset floating glass card holding the copy. */
+const HeroCard: React.FC<HeroProps> = ({ hero, images, theme, headingFont, isHome, onCta }) => {
+  const c = theme.colors
+  const d = useDesign()
+  const bg = img(images, hero.imageIndex)
+  return (
+    <section
+      className="relative flex w-full items-center overflow-hidden"
+      style={{ minHeight: isHome ? '86vh' : '44vh' }}
+    >
+      {bg ? (
+        <Image src={bg} alt={hero.headline} fill priority sizes="100vw" className="object-cover" />
+      ) : (
+        <div className="absolute inset-0" style={{ background: c.primary }} />
+      )}
+      <div
+        className="absolute inset-0"
+        style={{ background: 'linear-gradient(90deg, rgba(8,10,18,0.5), rgba(8,10,18,0.1))' }}
+      />
+      <div className={`relative mx-auto w-full ${containerClass(d)} px-5 py-16`}>
+        <div
+          className="max-w-xl p-8 sm:p-10"
+          style={{
+            background: `color-mix(in oklab, ${c.background} 88%, transparent)`,
+            border: `1px solid ${c.border}`,
+            borderRadius: `calc(${theme.radius} * 2)`,
+            backdropFilter: 'blur(10px)',
+            boxShadow: '0 30px 70px -30px rgba(0,0,0,0.5)',
+          }}
+        >
+          <HeroBadgesLight hero={hero} theme={theme} />
+          <h1
+            className={headlineClass(d)}
+            style={{ fontFamily: headingFont, color: c.foreground }}
+          >
+            {hero.headline}
+          </h1>
+          {hero.subheadline ? (
+            <p className="mt-5 text-lg leading-relaxed" style={{ color: c.mutedForeground }}>
+              {hero.subheadline}
+            </p>
+          ) : null}
+          <HeroCtas hero={hero} theme={theme} onCta={onCta} />
         </div>
       </div>
     </section>
@@ -384,12 +773,13 @@ const SectionHeading: React.FC<{
   center?: boolean
 }> = ({ title, subtitle, theme, headingFont, center }) => {
   const c = theme.colors
+  const d = useDesign()
   if (!title && !subtitle) return null
   return (
     <div className={`mb-12 max-w-2xl ${center ? 'mx-auto text-center' : ''}`}>
       {title ? (
         <h2
-          className="text-3xl font-bold tracking-tight sm:text-4xl"
+          className={`text-3xl font-bold sm:text-4xl ${d.uppercaseHeadings ? 'uppercase tracking-wide' : 'tracking-tight'}`}
           style={{ fontFamily: headingFont, color: c.foreground }}
         >
           {title}
@@ -404,18 +794,24 @@ const SectionHeading: React.FC<{
   )
 }
 
-const Shell: React.FC<{ children: React.ReactNode; muted?: boolean; theme: ReturnType<typeof getTheme> }> = ({
-  children,
-  muted,
-  theme,
-}) => (
-  <section
-    className="w-full px-5 py-20 sm:py-24"
-    style={muted ? { background: theme.colors.muted } : undefined}
-  >
-    <div className="mx-auto max-w-6xl">{children}</div>
-  </section>
-)
+const Shell: React.FC<{
+  children: React.ReactNode
+  muted?: boolean
+  theme: ReturnType<typeof getTheme>
+  /** show the design family's decorative background layer */
+  decorate?: boolean
+}> = ({ children, muted, theme, decorate }) => {
+  const d = useDesign()
+  return (
+    <section
+      className={`relative w-full overflow-hidden px-5 ${sectionPadClass(d)}`}
+      style={muted ? { background: theme.colors.muted } : undefined}
+    >
+      {decorate ? <Decoration theme={theme} /> : null}
+      <div className={`relative mx-auto ${containerClass(d)}`}>{children}</div>
+    </section>
+  )
+}
 
 const Features: React.FC<{
   section: Extract<SpecSection, { kind: 'features' }>
@@ -423,38 +819,99 @@ const Features: React.FC<{
   headingFont: string
 }> = ({ section, theme, headingFont }) => {
   const c = theme.colors
+  const d = useDesign()
+  const variant = d.feature
+  const card = cardStyle(d, theme)
+
+  // minimalList: single column, large type, hairline separators, no cards.
+  if (variant === 'minimalList') {
+    return (
+      <Shell theme={theme} decorate>
+        <SectionHeading title={section.title} subtitle={section.subtitle} theme={theme} headingFont={headingFont} />
+        <div className="divide-y" style={{ borderColor: c.border }}>
+          {section.items.map((f, i) => (
+            <div key={i} className="grid gap-2 py-8 sm:grid-cols-[1fr_2fr] sm:gap-10">
+              <h3
+                className={`text-xl font-semibold ${d.uppercaseHeadings ? 'uppercase tracking-wide' : ''}`}
+                style={{ fontFamily: headingFont, color: c.foreground }}
+              >
+                {f.title}
+              </h3>
+              <p className="text-base leading-relaxed" style={{ color: c.mutedForeground }}>
+                {f.body}
+              </p>
+            </div>
+          ))}
+        </div>
+      </Shell>
+    )
+  }
+
+  // iconLeft: 2-up rows with the icon beside the copy.
+  if (variant === 'iconLeft') {
+    return (
+      <Shell theme={theme} decorate>
+        <SectionHeading title={section.title} subtitle={section.subtitle} theme={theme} headingFont={headingFont} />
+        <div className="grid gap-8 sm:grid-cols-2">
+          {section.items.map((f, i) => (
+            <div key={i} className="flex items-start gap-4">
+              <div
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
+                style={{ background: `color-mix(in oklab, ${c.primary} 14%, transparent)`, color: c.primary }}
+              >
+                <SpecIcon name={f.icon} className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold" style={{ fontFamily: headingFont, color: c.foreground }}>
+                  {f.title}
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed" style={{ color: c.mutedForeground }}>
+                  {f.body}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Shell>
+    )
+  }
+
+  // numbered / bordered / iconTopCard: 3-up grid, differing chrome.
   return (
-    <Shell theme={theme}>
-      <SectionHeading
-        title={section.title}
-        subtitle={section.subtitle}
-        theme={theme}
-        headingFont={headingFont}
-        center
-      />
+    <Shell theme={theme} decorate>
+      <SectionHeading title={section.title} subtitle={section.subtitle} theme={theme} headingFont={headingFont} center />
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {section.items.map((f, i) => (
           <div
             key={i}
-            className="group rounded-2xl p-7 transition-all hover:-translate-y-1"
-            style={{
-              background: c.card,
-              border: `1px solid ${c.border}`,
-              borderRadius: `calc(${theme.radius} * 1.6)`,
-              boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
-            }}
+            className="group p-7 transition-all hover:-translate-y-1"
+            style={card}
           >
-            <div
-              className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl"
-              style={{
-                background: `color-mix(in oklab, ${c.primary} 14%, transparent)`,
-                color: c.primary,
-              }}
-            >
-              <SpecIcon name={f.icon} className="h-6 w-6" />
-            </div>
+            {variant === 'numbered' ? (
+              <div
+                className="mb-5 text-4xl font-black tabular-nums"
+                style={{ fontFamily: headingFont, color: c.primary, opacity: 0.9 }}
+              >
+                {String(i + 1).padStart(2, '0')}
+              </div>
+            ) : (
+              <div
+                className={`mb-5 flex items-center justify-center ${variant === 'bordered' ? 'h-12 w-12' : 'h-14 w-14'}`}
+                style={{
+                  background:
+                    variant === 'bordered'
+                      ? 'transparent'
+                      : `color-mix(in oklab, ${c.primary} 14%, transparent)`,
+                  color: c.primary,
+                  border: variant === 'bordered' ? `1.5px solid ${c.primary}` : 'none',
+                  borderRadius: variant === 'bordered' ? '2px' : `calc(${theme.radius} * 1.2)`,
+                }}
+              >
+                <SpecIcon name={f.icon} className={variant === 'bordered' ? 'h-6 w-6' : 'h-7 w-7'} />
+              </div>
+            )}
             <h3
-              className="text-lg font-bold"
+              className={`text-lg font-bold ${d.uppercaseHeadings ? 'uppercase tracking-wide' : ''}`}
               style={{ fontFamily: headingFont, color: c.cardForeground }}
             >
               {f.title}
@@ -475,16 +932,78 @@ const Stats: React.FC<{
   headingFont: string
 }> = ({ section, theme, headingFont }) => {
   const c = theme.colors
+  const d = useDesign()
+
+  // band: full-width colored band with large numbers.
+  if (d.stat === 'band') {
+    return (
+      <section className="w-full px-5" style={{ background: c.primary }}>
+        <div className={`mx-auto ${containerClass(d)} ${sectionPadClass(d)}`}>
+          {section.title ? (
+            <h2
+              className={`mb-10 text-center text-2xl font-bold sm:text-3xl ${d.uppercaseHeadings ? 'uppercase tracking-wide' : ''}`}
+              style={{ fontFamily: headingFont, color: c.primaryForeground }}
+            >
+              {section.title}
+            </h2>
+          ) : null}
+          <div className="grid grid-cols-2 gap-8 lg:grid-cols-4">
+            {section.items.map((s, i) => (
+              <div key={i} className="text-center">
+                <div
+                  className="text-4xl font-extrabold tracking-tight sm:text-5xl"
+                  style={{ fontFamily: headingFont, color: c.primaryForeground }}
+                >
+                  {s.value}
+                </div>
+                <div
+                  className="mt-2 text-sm font-medium"
+                  style={{ color: `color-mix(in oklab, ${c.primaryForeground} 80%, transparent)` }}
+                >
+                  {s.label}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  // inline: a single row of numbers separated by dividers.
+  if (d.stat === 'inline') {
+    return (
+      <Shell theme={theme}>
+        <SectionHeading title={section.title} theme={theme} headingFont={headingFont} center />
+        <div
+          className="flex flex-wrap items-center justify-center divide-x"
+          style={{ borderColor: c.border }}
+        >
+          {section.items.map((s, i) => (
+            <div key={i} className="px-8 py-4 text-center">
+              <div
+                className="text-4xl font-extrabold tracking-tight sm:text-5xl"
+                style={{ fontFamily: headingFont, color: c.primary }}
+              >
+                {s.value}
+              </div>
+              <div className="mt-2 text-sm font-medium" style={{ color: c.mutedForeground }}>
+                {s.label}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Shell>
+    )
+  }
+
+  // cards: each stat in its own card.
   return (
     <Shell theme={theme} muted>
       <SectionHeading title={section.title} theme={theme} headingFont={headingFont} center />
       <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
         {section.items.map((s, i) => (
-          <div
-            key={i}
-            className="rounded-2xl px-4 py-8 text-center"
-            style={{ background: c.card, border: `1px solid ${c.border}` }}
-          >
+          <div key={i} className="px-4 py-8 text-center" style={cardStyle(d, theme)}>
             <div
               className="text-4xl font-extrabold tracking-tight sm:text-5xl"
               style={{ fontFamily: headingFont, color: c.primary }}
@@ -509,6 +1028,7 @@ const Showcase: React.FC<{
   onCta: (e: React.MouseEvent, url: string) => void
 }> = ({ section, images, theme, headingFont, onCta }) => {
   const c = theme.colors
+  const d = useDesign()
   const src = img(images, section.imageIndex)
   const imageRight = section.layout === 'imageRight'
   return (
@@ -559,8 +1079,8 @@ const Showcase: React.FC<{
             <a
               href={section.cta.url || '#'}
               onClick={(e) => onCta(e, section.cta!.url)}
-              className="mt-8 inline-block rounded-full px-6 py-3 text-sm font-bold shadow-md transition-transform hover:scale-[1.04]"
-              style={{ background: c.primary, color: c.primaryForeground }}
+              className="mt-8 inline-block px-6 py-3 text-sm font-bold shadow-md transition-transform hover:scale-[1.04]"
+              style={{ background: c.primary, color: c.primaryForeground, borderRadius: btnRadius(d, theme) }}
             >
               {section.cta.label}
             </a>
@@ -611,8 +1131,9 @@ const Steps: React.FC<{
   headingFont: string
 }> = ({ section, theme, headingFont }) => {
   const c = theme.colors
+  const d = useDesign()
   return (
-    <Shell theme={theme}>
+    <Shell theme={theme} decorate>
       <SectionHeading
         title={section.title}
         subtitle={section.subtitle}
@@ -624,8 +1145,8 @@ const Steps: React.FC<{
         {section.items.map((s, i) => (
           <div
             key={i}
-            className="relative rounded-2xl p-7"
-            style={{ background: c.card, border: `1px solid ${c.border}` }}
+            className="relative p-7"
+            style={cardStyle(d, theme)}
           >
             <div
               className="mb-4 flex h-10 w-10 items-center justify-center rounded-full text-sm font-extrabold"
@@ -652,6 +1173,7 @@ const Faq: React.FC<{
   headingFont: string
 }> = ({ section, theme, headingFont }) => {
   const c = theme.colors
+  const d = useDesign()
   return (
     <Shell theme={theme} muted>
       <SectionHeading title={section.title} theme={theme} headingFont={headingFont} center />
@@ -659,8 +1181,8 @@ const Faq: React.FC<{
         {section.items.map((f, i) => (
           <details
             key={i}
-            className="group rounded-xl p-5"
-            style={{ background: c.card, border: `1px solid ${c.border}` }}
+            className="group p-5"
+            style={cardStyle(d, theme)}
           >
             <summary
               className="cursor-pointer list-none text-base font-semibold"
@@ -714,8 +1236,9 @@ const CtaBand: React.FC<{
   onCta: (e: React.MouseEvent, url: string) => void
 }> = ({ section, theme, headingFont, onCta }) => {
   const c = theme.colors
+  const d = useDesign()
   return (
-    <section className="w-full px-5 py-20 sm:py-24">
+    <section className={`w-full px-5 ${sectionPadClass(d)}`}>
       <div
         className="mx-auto max-w-5xl overflow-hidden rounded-3xl px-8 py-16 text-center"
         style={{
@@ -740,8 +1263,8 @@ const CtaBand: React.FC<{
         <a
           href={section.cta.url || '#'}
           onClick={(e) => onCta(e, section.cta.url)}
-          className="mt-8 inline-block rounded-full bg-white px-8 py-3.5 text-sm font-bold shadow-xl transition-transform hover:scale-[1.05]"
-          style={{ color: c.primary }}
+          className="mt-8 inline-block bg-white px-8 py-3.5 text-sm font-bold shadow-xl transition-transform hover:scale-[1.05]"
+          style={{ color: c.primary, borderRadius: btnRadius(d, theme) }}
         >
           {section.cta.label}
         </a>
@@ -762,6 +1285,7 @@ const Contact: React.FC<{
     { icon: 'location', label: 'Address', value: section.address },
     { icon: 'clock', label: 'Hours', value: section.hours },
   ].filter((r) => r.value)
+  const d = useDesign()
 
   return (
     <Shell theme={theme}>
@@ -775,8 +1299,8 @@ const Contact: React.FC<{
         {rows.map((r, i) => (
           <div
             key={i}
-            className="flex items-start gap-4 rounded-2xl p-6"
-            style={{ background: c.card, border: `1px solid ${c.border}` }}
+            className="flex items-start gap-4 p-6"
+            style={cardStyle(d, theme)}
           >
             <div
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
@@ -816,9 +1340,10 @@ const Footer: React.FC<{
   headingFont: string
 }> = ({ spec, theme, onNav, headingFont }) => {
   const c = theme.colors
+  const d = useDesign()
   return (
     <footer style={{ background: c.card, borderTop: `1px solid ${c.border}` }}>
-      <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 px-5 py-12 sm:flex-row sm:items-center">
+      <div className={`mx-auto flex ${containerClass(d)} flex-col items-start justify-between gap-6 px-5 py-12 sm:flex-row sm:items-center`}>
         <div>
           <div className="text-lg font-extrabold tracking-tight" style={{ fontFamily: headingFont, color: c.foreground }}>
             {spec.siteName}
