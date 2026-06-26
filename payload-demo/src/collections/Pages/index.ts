@@ -12,6 +12,7 @@ import { slugField } from 'payload'
 import { populatePublishedAt } from '../../hooks/populatePublishedAt'
 import { generatePreviewPath } from '../../utilities/generatePreviewPath'
 import { revalidateDelete, revalidatePage } from './hooks/revalidatePage'
+import { THEMES, DEFAULT_THEME_ID } from '@/lib/ai/themes'
 
 import {
   MetaDescriptionField,
@@ -59,6 +60,7 @@ export const Pages: CollectionConfig<'pages'> = {
       name: 'title',
       type: 'text',
       required: true,
+      localized: true,
     },
     {
       type: 'tabs',
@@ -74,6 +76,7 @@ export const Pages: CollectionConfig<'pages'> = {
               type: 'blocks',
               blocks: [CallToAction, Content, MediaBlock, Archive, FormBlock],
               required: true,
+              localized: true,
               admin: {
                 initCollapsed: true,
               },
@@ -109,6 +112,16 @@ export const Pages: CollectionConfig<'pages'> = {
           ],
         },
       ],
+    },
+    {
+      name: 'theme',
+      type: 'select',
+      defaultValue: DEFAULT_THEME_ID,
+      admin: {
+        position: 'sidebar',
+        description: 'Visual style preset. The AI picks one when generating; you can change it anytime.',
+      },
+      options: THEMES.map((t) => ({ label: `${t.name} — ${t.mood}`, value: t.id })),
     },
     {
       name: 'publishedAt',

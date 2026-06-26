@@ -55,6 +55,23 @@ export default buildConfig({
       ],
     },
   },
+  // Multilingual / i18n: merchants can translate their generated site per locale.
+  localization: {
+    locales: [
+      { label: 'English', code: 'en' },
+      { label: '简体中文', code: 'zh' },
+      { label: '繁體中文', code: 'zh-TW' },
+      { label: 'Español', code: 'es' },
+      { label: 'Français', code: 'fr' },
+      { label: 'Deutsch', code: 'de' },
+      { label: '日本語', code: 'ja' },
+      { label: '한국어', code: 'ko' },
+      { label: 'Português', code: 'pt' },
+      { label: 'العربية', code: 'ar', rtl: true },
+    ],
+    defaultLocale: 'en',
+    fallback: true,
+  },
   // This config helps us configure global or default features that the other editors can inherit
   editor: defaultLexical,
   db: sqliteAdapter({

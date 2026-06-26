@@ -27,6 +27,12 @@
     "order": {
       "type": "integer",
       "default": 0
+    },
+    "image": {
+      "type": "media",
+      "multiple": false,
+      "required": false,
+      "allowedTypes": ["images"]
     }
   }
 }

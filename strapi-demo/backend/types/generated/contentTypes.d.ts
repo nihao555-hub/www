@@ -458,12 +458,14 @@ export interface ApiCompanyInfoCompanyInfo extends Struct.SingleTypeSchema {
       Schema.Attribute.Private;
     description: Schema.Attribute.Text;
     email: Schema.Attribute.Email;
+    heroImage: Schema.Attribute.Media<'images'>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
       'api::company-info.company-info'
     > &
       Schema.Attribute.Private;
+    logo: Schema.Attribute.Media<'images'>;
     name: Schema.Attribute.String & Schema.Attribute.Required;
     phone: Schema.Attribute.String;
     publishedAt: Schema.Attribute.DateTime;
@@ -491,6 +493,7 @@ export interface ApiServiceService extends Struct.CollectionTypeSchema {
       Schema.Attribute.Private;
     description: Schema.Attribute.Text & Schema.Attribute.Required;
     icon: Schema.Attribute.String & Schema.Attribute.DefaultTo<'star'>;
+    image: Schema.Attribute.Media<'images'>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',

@@ -108,7 +108,12 @@ export interface Config {
   db: {
     defaultIDType: number;
   };
-  fallbackLocale: null;
+  fallbackLocale:
+    | ('false' | 'none' | 'null')
+    | false
+    | null
+    | ('en' | 'zh' | 'zh-TW' | 'es' | 'fr' | 'de' | 'ja' | 'ko' | 'pt' | 'ar')
+    | ('en' | 'zh' | 'zh-TW' | 'es' | 'fr' | 'de' | 'ja' | 'ko' | 'pt' | 'ar')[];
   globals: {
     header: Header;
     footer: Footer;
@@ -117,7 +122,7 @@ export interface Config {
     header: HeaderSelect<false> | HeaderSelect<true>;
     footer: FooterSelect<false> | FooterSelect<true>;
   };
-  locale: null;
+  locale: 'en' | 'zh' | 'zh-TW' | 'es' | 'fr' | 'de' | 'ja' | 'ko' | 'pt' | 'ar';
   widgets: {
     collections: CollectionsWidget;
   };
@@ -210,6 +215,44 @@ export interface Page {
     image?: (number | null) | Media;
     description?: string | null;
   };
+  /**
+   * Visual style preset. The AI picks one when generating; you can change it anytime.
+   */
+  theme?:
+    | (
+        | 'nordic-minimal'
+        | 'paper-mono'
+        | 'electric-indigo'
+        | 'cyber-night'
+        | 'ocean-breeze'
+        | 'corporate-navy'
+        | 'emerald-trust'
+        | 'sunset-coral'
+        | 'magenta-pop'
+        | 'citrus-punch'
+        | 'noir-luxe'
+        | 'champagne-serif'
+        | 'royal-plum'
+        | 'terracotta-earth'
+        | 'sage-botanical'
+        | 'desert-sand'
+        | 'graphite-slate'
+        | 'midnight-aurora'
+        | 'crimson-edge'
+        | 'arctic-frost'
+        | 'honey-amber'
+        | 'rose-quartz'
+        | 'forest-deep'
+        | 'mono-brutalist'
+        | 'pastel-soft'
+        | 'steel-industrial'
+        | 'lavender-calm'
+        | 'teal-modern'
+        | 'obsidian-mono'
+        | 'mint-fresh'
+        | 'cobalt-power'
+      )
+    | null;
   publishedAt?: string | null;
   /**
    * When enabled, the slug will auto-generate from the title field on save and autosave.
@@ -1097,6 +1140,7 @@ export interface PagesSelect<T extends boolean = true> {
         image?: T;
         description?: T;
       };
+  theme?: T;
   publishedAt?: T;
   generateSlug?: T;
   slug?: T;

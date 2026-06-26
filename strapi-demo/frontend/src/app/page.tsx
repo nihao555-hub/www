@@ -1,6 +1,7 @@
 import {
   getCompanyInfo,
   getServices,
+  mediaUrl,
   type CompanyInfo,
   type Service,
 } from "@/lib/strapi";
@@ -35,12 +36,20 @@ export default async function Home() {
   const services =
     servicesData && servicesData.length > 0 ? servicesData : FALLBACK_SERVICES;
   const connected = companyData !== null;
+  const logo = mediaUrl(company.logo ?? null);
+  const hero = mediaUrl(company.heroImage ?? null);
 
   return (
     <div className="min-h-screen bg-white text-zinc-900">
       <header className="border-b border-zinc-100">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-          <span className="text-lg font-bold tracking-tight">{company.name}</span>
+          <span className="flex items-center gap-2 text-lg font-bold tracking-tight">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {logo ? (
+              <img src={logo} alt={company.name} className="h-8 w-8 rounded" />
+            ) : null}
+            {company.name}
+          </span>
           <nav className="hidden gap-8 text-sm text-zinc-600 sm:flex">
             <a href="#services" className="hover:text-zinc-900">
               服务
@@ -79,6 +88,12 @@ export default async function Home() {
             查看服务
           </a>
         </div>
+        {hero ? (
+          <div className="mx-auto mt-16 max-w-4xl overflow-hidden rounded-2xl border border-zinc-100 shadow-sm">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={hero} alt={`${company.name} 主视觉`} className="w-full" />
+          </div>
+        ) : null}
       </section>
 
       <section id="services" className="bg-zinc-50 py-24">
@@ -90,8 +105,17 @@ export default async function Home() {
             {services.map((service) => (
               <div
                 key={service.id}
-                className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm"
+                className="overflow-hidden rounded-2xl border border-zinc-100 bg-white shadow-sm"
               >
+                {mediaUrl(service.image ?? null) ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={mediaUrl(service.image ?? null) as string}
+                    alt={service.title}
+                    className="h-40 w-full object-cover"
+                  />
+                ) : null}
+                <div className="p-6">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50 text-xl">
                   ★
                 </div>
@@ -99,6 +123,7 @@ export default async function Home() {
                 <p className="mt-2 text-sm leading-6 text-zinc-600">
                   {service.description}
                 </p>
+                </div>
               </div>
             ))}
           </div>
