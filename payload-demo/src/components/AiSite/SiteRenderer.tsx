@@ -8,6 +8,7 @@ import { getDesign, type DesignFamily } from '@/lib/ai/design-systems'
 import type { SiteSpec, SpecPage, SpecSection } from '@/lib/ai/site-spec'
 
 import { SpecIcon } from './Icon'
+import { DynamicComponentRenderer } from './DynamicComponentRenderer'
 
 type Props = {
   spec: SiteSpec
@@ -205,14 +206,39 @@ export const SiteRenderer: React.FC<Props> = ({ spec, images }) => {
 
         <main>
           {page.hero ? (
-            <Hero
-              hero={page.hero}
-              images={images}
-              theme={theme}
-              headingFont={headingFont}
-              isHome={page.path === ''}
-              onCta={onCta}
-            />
+            page.path === '' && spec.heroJsx ? (
+              <DynamicComponentRenderer
+                code={spec.heroJsx}
+                componentProps={{
+                  theme,
+                  design,
+                  images,
+                  headline: page.hero.headline,
+                  subheadline: page.hero.subheadline,
+                  badges: page.hero.badges,
+                  ctas: page.hero.ctas,
+                }}
+                fallback={
+                  <Hero
+                    hero={page.hero}
+                    images={images}
+                    theme={theme}
+                    headingFont={headingFont}
+                    isHome
+                    onCta={onCta}
+                  />
+                }
+              />
+            ) : (
+              <Hero
+                hero={page.hero}
+                images={images}
+                theme={theme}
+                headingFont={headingFont}
+                isHome={page.path === ''}
+                onCta={onCta}
+              />
+            )
           ) : null}
 
           {spec.brandIcons && spec.brandIcons.length && page.path === '' ? (
@@ -760,6 +786,24 @@ const SectionView: React.FC<{
       return <CtaBand section={section} theme={theme} headingFont={headingFont} onCta={onCta} />
     case 'contact':
       return <Contact section={section} theme={theme} headingFont={headingFont} />
+    case 'jsx':
+      return (
+        <DynamicComponentRenderer
+          code={section.code}
+          componentProps={{ theme, images }}
+          fallback={
+            section.fallback ? (
+              <SectionView
+                section={section.fallback}
+                images={images}
+                theme={theme}
+                headingFont={headingFont}
+                onCta={onCta}
+              />
+            ) : null
+          }
+        />
+      )
     default:
       return null
   }
