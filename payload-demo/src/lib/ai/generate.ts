@@ -15,6 +15,9 @@ export type MerchantInput = {
   name: string
   industry?: string
   description?: string
+  /** free-text brief the user typed in the single input box; the agent splits
+   * this into name/industry/description automatically. */
+  brief?: string
   /** language the generated site copy should be written in (e.g. "en", "zh") */
   language?: string
   /** optional theme id to force; when omitted the AI chooses one */
@@ -118,10 +121,52 @@ function briefText(merchant: MerchantInput, imageCount: number): string {
     `Merchant name: ${merchant.name || '(infer from images)'}`,
     merchant.industry ? `Industry: ${merchant.industry}` : null,
     merchant.description ? `Brief: ${merchant.description}` : null,
+    merchant.brief ? `User's raw request: ${merchant.brief}` : null,
     `Number of product images: ${imageCount} (indexes 0..${Math.max(0, imageCount - 1)})`,
   ]
     .filter(Boolean)
     .join('\n')
+}
+
+/**
+ * Splits the user's free-text brief into structured fields. The single input
+ * box lets users type everything at once ("all info, agent auto-splits"); this
+ * pulls out a clean brand name + industry + description so downstream theme
+ * choice and 21st.dev searches are sharper. Best-effort: failures keep the
+ * original merchant input untouched.
+ */
+async function splitBrief(merchant: MerchantInput): Promise<MerchantInput> {
+  const brief = merchant.brief?.trim()
+  // Nothing to split, or the structured fields are already provided.
+  if (!brief || (merchant.name && merchant.industry && merchant.description)) {
+    return merchant
+  }
+  const messages: ChatMessage[] = [
+    {
+      role: 'system',
+      content: `You extract structured fields from a merchant's free-text request for a B2B website. Output ONLY a JSON object: {"name": string, "industry": string, "description": string}. "name" is the brand/company name ("" if not stated), "industry" is a short category (e.g. "steel pipe manufacturing"), "description" is a one-paragraph summary of what they sell, audience and selling points. Do not invent a brand name; leave it "" if absent.`,
+    },
+    { role: 'user', content: brief },
+  ]
+  try {
+    const reply = await relayChat(messages)
+    const parsed = extractJson(reply) as Record<string, unknown>
+    return {
+      ...merchant,
+      name: merchant.name || (typeof parsed.name === 'string' ? parsed.name.trim() : ''),
+      industry:
+        merchant.industry ||
+        (typeof parsed.industry === 'string' ? parsed.industry.trim() : undefined) ||
+        undefined,
+      description:
+        merchant.description ||
+        (typeof parsed.description === 'string' ? parsed.description.trim() : undefined) ||
+        brief,
+    }
+  } catch {
+    // Fall back to using the raw brief as the description.
+    return { ...merchant, description: merchant.description || brief }
+  }
 }
 
 function imageParts(imageDataUrls: string[]): Exclude<ChatMessage['content'], string> {
@@ -168,6 +213,15 @@ export async function runGeneration(
   const lang = languageLabel(merchant.language)
   const catalog = themeCatalogForPrompt()
   const validIds = THEMES.map((t) => t.id)
+
+  // ---- Phase 0: split the free-text brief into structured fields ---------
+  if (merchant.brief?.trim() && !(merchant.name && merchant.industry && merchant.description)) {
+    emit({ type: 'step', key: 'parse', label: 'Understanding your brief', status: 'active' })
+    merchant = await splitBrief(merchant)
+    if (merchant.name) emit({ type: 'log', message: `Brand: ${merchant.name}` })
+    if (merchant.industry) emit({ type: 'log', message: `Industry: ${merchant.industry}` })
+    emit({ type: 'step', key: 'parse', label: 'Understanding your brief', status: 'done' })
+  }
 
   // ---- Phase 1: analyze images + choose theme (streamed) -----------------
   emit({ type: 'step', key: 'read', label: 'Reading product images', status: 'active' })
