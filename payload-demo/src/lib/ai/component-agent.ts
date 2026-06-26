@@ -33,6 +33,8 @@ export type McpToolCall = {
   similarity?: number
   /** short snippet of the real code returned (for the live tool card) */
   codePreview?: string
+  /** this call hunted for a distinctive, popular "signature" standout component */
+  featured?: boolean
 }
 
 export type ComponentAgentResult = {
@@ -54,9 +56,37 @@ type AgentContext = {
   template: SiteTemplate
 }
 
-const MAX_ROUNDS = 7
+const MAX_ROUNDS = 8
 /** Core sections we guarantee a real component for, even if the model stops early. */
 const REQUIRED_SECTIONS = ['hero', 'features', 'cta'] as const
+
+/**
+ * Curated "signature" searches for distinctive, popular, visually-striking
+ * components — the interesting/award-winning kind (animated, interactive,
+ * scroll-driven) that elevate a site beyond a generic template. We guarantee at
+ * least one of these is pulled per site so every generated site gets a "wow"
+ * moment, and the agent is steered to prefer popular/highly-polished results.
+ */
+const SIGNATURE_QUERIES: string[] = [
+  'animated bento grid features',
+  'aurora gradient hero background',
+  'infinite logo marquee strip',
+  'spotlight hover feature cards',
+  '3d tilt product card',
+  'scroll reveal parallax section',
+  'animated number counter stats',
+  'interactive testimonials marquee',
+  'glowing gradient cta banner',
+  'sticky scroll feature showcase',
+]
+
+/** Deterministically pick a signature query so the same brief is reproducible
+ * yet different brands/designs get different standout components. */
+function pickSignatureQuery(seed: string): string {
+  let h = 0
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0
+  return SIGNATURE_QUERIES[Math.abs(h) % SIGNATURE_QUERIES.length]
+}
 
 type AgentAction =
   | { tool: 'component_inspiration'; section: string; searchQuery: string; message: string }
@@ -117,9 +147,11 @@ Respond EVERY round with ONLY one JSON object, no prose, exactly one of:
 
 Rules:
 - Make ONE tool call per round. Pull real components for the key sections of THIS site — at minimum hero, features and a strong CTA, plus any of {stats, showcase, steps, faq} that suit the brand.
+- PREFER POPULAR, HIGHLY-POLISHED, MODERN components. Bias your searchQuery toward the kind of work that trends on 21st.dev / Awwwards / Dribbble — well-crafted, production-grade, visually rich. Avoid plain/generic boilerplate.
+- DEDICATE AT LEAST ONE round to a distinctive "SIGNATURE" component: set "section":"signature" and search for an interesting, popular, animated/interactive standout (e.g. "animated bento grid", "aurora gradient background", "infinite logo marquee", "spotlight hover cards", "3d tilt card", "scroll reveal section", "animated number counter"). This is the site's wow moment — pick one that fits the brand's vibe.
 - Do NOT search the same section twice. Pick precise, modern searchQuery phrases (e.g. "industrial hero section", "feature grid cards", "stats counter band", "cta banner").
 - Use logo_search at most once, only for logos a real buyer would recognize for this brand/industry; skip it if none apply.
-- Once you have real components for the key sections, reply {"done":true}. You have at most ${MAX_ROUNDS} rounds.`
+- Once you have real components for the key sections AND one signature standout, reply {"done":true}. You have at most ${MAX_ROUNDS} rounds.`
 
 /**
  * Runs the multi-round MCP component agent. Best-effort: any failure returns
@@ -168,6 +200,7 @@ export async function runComponentAgent(
         searchQuery: string
         message: string
       }): Promise<McpToolCall> => {
+        const featured = action.section.toLowerCase() === 'signature'
         const call: McpToolCall = {
           id: ++callId,
           round: calls.length + 1,
@@ -175,12 +208,14 @@ export async function runComponentAgent(
           section: action.section,
           query: action.searchQuery,
           status: 'running',
+          featured,
         }
         calls.push(call)
         emit()
         try {
           const found = await session.inspire(action.section, action.searchQuery, action.message)
           if (found.length) {
+            if (featured) found.forEach((r) => (r.featured = true))
             refs.push(...found)
             const top = found[0]
             call.status = 'done'
@@ -267,6 +302,17 @@ export async function runComponentAgent(
           section,
           searchQuery: queryBySection[section] || `${section} section`,
           message: `Find a high-quality ${section} component for ${ctx.industry || ctx.name}`,
+        })
+      }
+
+      // ---- Fallback: guarantee one distinctive "signature" standout component -
+      if (!signal?.aborted && !refs.some((r) => r.featured)) {
+        const seed = `${ctx.name}|${ctx.industry ?? ''}|${ctx.themeName}|${ctx.template.id}`
+        const query = pickSignatureQuery(seed)
+        await runInspire({
+          section: 'signature',
+          searchQuery: query,
+          message: `Find a distinctive, popular, animated "${query}" component to be the wow moment of ${ctx.name}`,
         })
       }
 

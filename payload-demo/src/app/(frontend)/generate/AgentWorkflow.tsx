@@ -52,6 +52,7 @@ export type WorkflowMcpCall = {
   componentName?: string
   similarity?: number
   codePreview?: string
+  featured?: boolean
 }
 
 type StepState = 'pending' | 'active' | 'done'
@@ -209,7 +210,7 @@ export const AgentWorkflow: React.FC<{
                     const title =
                       call.tool === 'logo_search'
                         ? `logo_search · ${call.query}`
-                        : `component_inspiration · ${call.section ?? ''} · "${call.query}"`
+                        : `${call.featured ? '✦ 特色 · ' : ''}component_inspiration · ${call.section ?? ''} · "${call.query}"`
                     return (
                       <Tool key={call.id} defaultOpen={!!call.codePreview}>
                         <ToolHeader

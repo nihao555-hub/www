@@ -36,6 +36,10 @@ export type ComponentRef = {
   demoCode?: string
   /** match score reported by 21st.dev (0..1) */
   similarity?: number
+  /** marks a distinctive, high-impact "signature" component (animated/interactive
+   * standout — bento, marquee, aurora background, spotlight card, 3D tilt, scroll
+   * reveal, animated counters) deliberately pulled to make the site stand out. */
+  featured?: boolean
 }
 
 export function isMcpConfigured(): boolean {
