@@ -56,7 +56,7 @@ export type WorkflowMcpCall = {
 
 type StepState = 'pending' | 'active' | 'done'
 
-const STEP_ORDER = ['upload', 'parse', 'read', 'plan', 'inspire', 'image', 'write', 'jsx'] as const
+const STEP_ORDER = ['upload', 'parse', 'read', 'plan', 'inspire', 'image', 'write', 'jsx', 'sections'] as const
 type StepKey = (typeof STEP_ORDER)[number]
 
 const STEP_ICONS: Record<StepKey, LucideIcon> = {
@@ -68,6 +68,7 @@ const STEP_ICONS: Record<StepKey, LucideIcon> = {
   image: Wand2,
   write: PencilRuler,
   jsx: Send,
+  sections: Sparkles,
 }
 
 function fallbackLabel(key: string): string {
@@ -88,6 +89,8 @@ function fallbackLabel(key: string): string {
       return '撰写文案与组装版块'
     case 'jsx':
       return '编写实时渲染的 Hero 组件'
+    case 'sections':
+      return '用 21st 组件编写各版块（实时渲染）'
     default:
       return key
   }
