@@ -46,6 +46,7 @@ export const GenerateForm: React.FC = () => {
   const [steps, setSteps] = useState<Step[]>([])
   const [analysis, setAnalysis] = useState('')
   const [chosenTheme, setChosenTheme] = useState<{ id: string; name: string } | null>(null)
+  const [chosenTemplate, setChosenTemplate] = useState<{ id: string; name: string } | null>(null)
   const [inspiration, setInspiration] = useState<Inspiration | null>(null)
   const [logs, setLogs] = useState<string[]>([])
   const [result, setResult] = useState<DoneResult | null>(null)
@@ -86,6 +87,7 @@ export const GenerateForm: React.FC = () => {
     setSteps([])
     setAnalysis('')
     setChosenTheme(null)
+    setChosenTemplate(null)
     setInspiration(null)
     setLogs([])
     setRunning(true)
@@ -116,6 +118,8 @@ export const GenerateForm: React.FC = () => {
           setAnalysis((prev) => prev + String(payload.delta ?? ''))
         } else if (event === 'theme') {
           setChosenTheme({ id: String(payload.id), name: String(payload.name) })
+        } else if (event === 'template') {
+          setChosenTemplate({ id: String(payload.id), name: String(payload.name) })
         } else if (event === 'inspiration') {
           setInspiration(payload as unknown as Inspiration)
         } else if (event === 'log') {
@@ -221,6 +225,7 @@ export const GenerateForm: React.FC = () => {
                   logs={logs}
                   running={running}
                   chosenTheme={chosenTheme}
+                  chosenTemplate={chosenTemplate}
                 />
               </CardContent>
             </Card>

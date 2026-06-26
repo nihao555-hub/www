@@ -4,6 +4,14 @@ import { extractJson, relayChat, relayChatStream, type ChatMessage } from './rel
 import { normalizeSiteSpec, type SiteSpec } from './site-spec'
 import { THEMES, DEFAULT_THEME_ID, getTheme, themeCatalogForPrompt } from './themes'
 import {
+  TEMPLATES,
+  DEFAULT_TEMPLATE_ID,
+  getTemplate,
+  templateCatalogForPrompt,
+  templateBlueprintForPrompt,
+  pickTemplateFromAnalysis,
+} from './templates'
+import {
   searchComponents,
   searchIcons,
   isTwentyFirstConfigured,
@@ -22,6 +30,8 @@ export type MerchantInput = {
   language?: string
   /** optional theme id to force; when omitted the AI chooses one */
   themeId?: string
+  /** optional template/archetype id to force; when omitted the AI chooses one */
+  templateId?: string
 }
 
 /** Human label for each supported generation language. */
@@ -49,6 +59,7 @@ export type GenEvent =
   | { type: 'log'; message: string }
   | { type: 'analysis'; delta: string }
   | { type: 'theme'; id: string; name: string; reason?: string }
+  | { type: 'template'; id: string; name: string }
   | { type: 'inspiration'; components: ComponentInspiration[]; icons: IconResult[] }
   | { type: 'spec'; spec: SiteSpec }
 
@@ -57,13 +68,18 @@ You are shown a merchant's product photos and a short brief. Think out loud, bri
 1. What does this brand sell, who is the B2B audience, what is the industry?
 2. What visual direction fits (mood, palette, typography feel) — it must feel trustworthy, premium and modern, NOT a generic template.
 3. Pick exactly ONE theme id from the catalog below that best matches the brand.
-4. Plan FOUR pages — Home, Products, About, Contact — and for each list the sections you will build (use rich sections: features-with-icons, stats, product showcase, gallery, process steps, FAQ, testimonials-as-features, strong CTA, contact details).
+4. Pick exactly ONE template archetype id from the template library below — this is the proven page/section blueprint you will start from instead of designing from scratch.
+5. Following the chosen template's blueprint, plan the pages and for each list the sections you will build (use rich sections: features-with-icons, stats, product showcase, gallery, process steps, FAQ, strong CTA, contact details).
 
 Theme catalog (id (mood): when to use):
 {CATALOG}
 
-Keep it concise (a short paragraph + a per-page bullet plan). End with a line exactly like:
+Template library (id: name — when to use):
+{TEMPLATES}
+
+Keep it concise (a short paragraph + a per-page bullet plan). End with TWO lines exactly like:
 THEME: <theme-id>
+TEMPLATE: <template-id>
 Write your analysis in {LANGUAGE}.`
 
 const SPEC_SYSTEM = `You are an expert web designer and B2B brand copywriter. Output the final site as a SINGLE JSON object — no markdown, no commentary — matching this TypeScript type:
@@ -106,9 +122,13 @@ Theme catalog ids you may choose from:
 Icon keywords you MUST pick from for every feature/step "icon" field (use the closest match):
 {ICONS}
 
+Page/section blueprint to start from (the chosen reusable template — follow this structure, filling it with real copy; you may add/remove a single section per page only if it clearly improves the result):
+{BLUEPRINT}
+
 Rules:
-- Produce EXACTLY four pages in this order: Home (path ""), Products (path "products"), About (path "about"), Contact (path "contact").
-- Home: hero + at least 4 rich sections (e.g. stats, features-with-icons, a showcase, and a closing cta). Products: a compact hero + showcase/gallery/features describing the product range. About: company story (richtext + stats + steps/process). Contact: a contact section with email/phone/address + a short hero.
+- Build the pages following the blueprint above (same order, same per-page section kinds). Page 1 is the Home page (path "").
+- Home: a full hero + the blueprint's rich sections (no placeholders). Inner pages: a compact hero + their blueprint sections.
+- Every contact section should include email/phone/address where known.
 - EVERY "features" and "steps" item that can have an icon SHOULD set "icon" to one of the icon keywords above.
 - imageIndex / imageIndexes MUST be valid 0-based indexes into the provided images (there are {IMAGE_COUNT} image(s)). Reuse images across pages as needed.
 - CTA/nav urls should be in-site paths: "/", "/products", "/about", "/contact".
@@ -227,7 +247,9 @@ export async function runGeneration(
   emit({ type: 'step', key: 'read', label: 'Reading product images', status: 'active' })
   emit({ type: 'log', message: `Analyzing ${imageDataUrls.length} image(s) with vision…` })
 
-  const analysisSystem = ANALYSIS_SYSTEM.replace('{CATALOG}', catalog).replace('{LANGUAGE}', lang)
+  const analysisSystem = ANALYSIS_SYSTEM.replace('{CATALOG}', catalog)
+    .replace('{TEMPLATES}', templateCatalogForPrompt())
+    .replace('{LANGUAGE}', lang)
   const analysisMessages: ChatMessage[] = [
     { role: 'system', content: analysisSystem },
     {
@@ -251,6 +273,11 @@ export async function runGeneration(
   const chosenTheme = merchant.themeId || pickThemeFromAnalysis(analysis) || DEFAULT_THEME_ID
   const theme = getTheme(chosenTheme)
   emit({ type: 'theme', id: theme.id, name: theme.name })
+  const chosenTemplate =
+    merchant.templateId || pickTemplateFromAnalysis(analysis) || DEFAULT_TEMPLATE_ID
+  const template = getTemplate(chosenTemplate)
+  emit({ type: 'template', id: template.id, name: template.name })
+  emit({ type: 'log', message: `Starting from template: ${template.name}` })
   emit({ type: 'log', message: `Selected theme: ${theme.name} (${theme.mood})` })
   emit({ type: 'step', key: 'plan', label: 'Planning layout & style', status: 'done' })
 
@@ -302,6 +329,7 @@ export async function runGeneration(
     : 'No external component inspiration available; rely on your own taste.'
 
   const specSystem = SPEC_SYSTEM.replace('{CATALOG}', catalog)
+    .replace('{BLUEPRINT}', templateBlueprintForPrompt(template))
     .replace('{ICONS}', ICON_KEYWORDS.join(', '))
     .replaceAll('{LANGUAGE}', lang)
     .replaceAll('{IMAGE_COUNT}', String(imageDataUrls.length))
