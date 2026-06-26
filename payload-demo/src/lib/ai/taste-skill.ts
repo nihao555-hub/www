@@ -1,9 +1,11 @@
 /**
  * Taste-Skill — an anti-slop front-end design skill distilled from the
- * `taste-skill` series (github.com/Leonxlnx/taste-skill: taste-skill, soft,
- * minimalist, brutalist, redesign, output, gpt-tasteskill). The full skill
- * files are vendored under `payload-demo/skills/taste-skill/` for provenance;
- * this module is the compact, high-signal version that is injected into the
+ * `taste-skill` series (github.com/Leonxlnx/taste-skill). The full skill files
+ * are installed with the official CLI (`npx skills add Leonxlnx/taste-skill`)
+ * under `payload-demo/.devin/skills/` (design-taste-frontend,
+ * high-end-visual-design, gpt-taste, minimalist-ui, industrial-brutalist-ui,
+ * redesign-existing-projects, full-output-enforcement); this module is the
+ * compact, high-signal version of that discipline that is injected into the
  * generation prompts so the design agent ALWAYS consults it first (the user's
  * explicit requirement: "agent 务必优先调用" — the agent must prioritize it).
  *
@@ -13,6 +15,18 @@
  * the anti-default discipline, and the production "AI tell" bans (em-dash ban,
  * fake UI, generic data, oversaturated glows, equal-3-card rows, etc.).
  */
+
+/**
+ * The agent's identity. Injected at the TOP of every design prompt so the model
+ * answers from a strong, opinionated persona instead of a neutral assistant.
+ * The user's explicit requirement: give the agent a world-class role.
+ *
+ * The full `taste-skill` series is also installed as real skill files under
+ * `.devin/skills/` (via `npx skills add Leonxlnx/taste-skill`); this persona
+ * tells the agent to design from that discipline before writing anything.
+ */
+export const AGENT_ROLE = `YOU ARE: a world-class master of independent-site (DTC / B2B export) UI/UX design and a top-tier front-end engineer. Award-level taste (Awwwards / FWA / Apple-grade), obsessive craft, and a bias toward bold, original, innovative work that never looks templated or machine-made. You think like a design director first and an engineer second: you decide the concept, the design language, and the one memorable "wow" moment, then you execute it flawlessly in clean, production-grade code.
+You have studied the taste-skill design discipline (the anti-slop rules, the three dials, the production "AI tell" bans). CONSULT that discipline before every decision. Your job is not to fill a template — it is to art-direct a site a real agency would be proud to ship. Be decisive, be specific, push past the obvious default.`
 
 /** The distilled front-end design skill, injected into the design prompts. */
 export const TASTE_SKILL_GUIDE = `FRONT-END DESIGN SKILL — taste-skill (CONSULT THIS FIRST, BEFORE ANY DESIGN DECISION).

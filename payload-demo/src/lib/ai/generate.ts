@@ -8,7 +8,7 @@ import {
 } from './image-gen'
 import { extractJson, relayChat, relayChatStream, type ChatMessage } from './relay'
 import { normalizeSiteSpec, type SiteSpec, type SpecSection } from './site-spec'
-import { TASTE_SKILL_GUIDE, TASTE_SKILL_JSX_RULES } from './taste-skill'
+import { AGENT_ROLE, TASTE_SKILL_GUIDE, TASTE_SKILL_JSX_RULES } from './taste-skill'
 import { THEMES, DEFAULT_THEME_ID, getTheme, themeCatalogForPrompt } from './themes'
 import {
   DESIGNS,
@@ -100,7 +100,9 @@ export type GenEvent =
   | { type: 'mcp'; toolNames: string[]; calls: McpToolCall[] }
   | { type: 'spec'; spec: SiteSpec }
 
-const ANALYSIS_SYSTEM = `You are a senior brand & web designer working at the level of v0 / Lovable, specialized in professional B2B independent commerce websites (the kind a sales/export team sends to overseas buyers).
+const ANALYSIS_SYSTEM = `${AGENT_ROLE}
+
+You are a senior brand & web designer working at the level of v0 / Lovable, specialized in professional B2B independent commerce websites (the kind a sales/export team sends to overseas buyers).
 You are shown a merchant's product photos and a short brief. Think out loud, briefly, like a designer planning a MULTI-PAGE site:
 1. What does this brand sell, who is the B2B audience, what is the industry?
 2. What visual direction fits (mood, palette, typography feel) — it must feel trustworthy, premium and modern, NOT a generic template.
@@ -183,7 +185,9 @@ Rules:
 // Route 2 — ask the model to author a real, self-contained JSX hero that we
 // compile and render live (v0/lovable style), instead of only filling a fixed
 // template. Output is raw JSX, no imports/exports needed.
-const HERO_JSX_SYSTEM = `You are a senior front-end engineer + designer (v0 / Lovable level). Write ONE self-contained React function component for a website HERO section. This code is compiled and rendered LIVE, so it must be correct, safe, and visually striking.
+const HERO_JSX_SYSTEM = `${AGENT_ROLE}
+
+Write ONE self-contained React function component for a website HERO section. This code is compiled and rendered LIVE, so it must be correct, safe, and visually striking.
 
 Output rules (CRITICAL):
 - Output ONLY the component code. No markdown fences, no prose, no imports, no exports.
@@ -207,7 +211,9 @@ Return the raw component code now.`
 // 21st.dev component pulled for that section actually shapes the final design,
 // not just the hero. Copy is baked into the JSX verbatim (already written in the
 // target language) so the only runtime scope needed is { theme, images }.
-const SECTION_JSX_SYSTEM = `You are a senior front-end engineer + designer (v0 / Lovable level). Write ONE self-contained React function component for a single website SECTION (NOT the hero). This code is compiled and rendered LIVE, so it must be correct, safe, and visually striking.
+const SECTION_JSX_SYSTEM = `${AGENT_ROLE}
+
+Write ONE self-contained React function component for a single website SECTION (NOT the hero). This code is compiled and rendered LIVE, so it must be correct, safe, and visually striking.
 
 Output rules (CRITICAL):
 - Output ONLY the component code. No markdown fences, no prose, no imports, no exports.
@@ -226,7 +232,9 @@ ${TASTE_SKILL_JSX_RULES}
 
 Return the raw component code now.`
 
-const PLAN_SYSTEM = `You are the lead design agent for an AI independent-site builder, working PLAN-FIRST: like a senior designer, you decide your approach before building anything. You have already studied the merchant's photos and brief.
+const PLAN_SYSTEM = `${AGENT_ROLE}
+
+You are the lead design agent for an AI independent-site builder, working PLAN-FIRST: like a senior designer, you decide your approach before building anything. You have already studied the merchant's photos and brief.
 Output a SHORT, concrete BUILD PLAN for THIS specific site as a numbered list (5-8 lines, no preamble, no closing remarks):
 1. Design Read — one line: page kind, audience, vibe + the aesthetic family you'll commit to.
 2. Dials — state DESIGN_VARIANCE, MOTION_INTENSITY and VISUAL_DENSITY with the values (1-10) you choose and why, in a few words.
@@ -237,7 +245,9 @@ Be specific to THIS brand, never generic. Keep each line tight. Write the plan i
 
 ${TASTE_SKILL_GUIDE}`
 
-const POLISH_SYSTEM = `You are a senior front-end engineer doing a FINAL QA POLISH pass on a single live-rendered React component (it is compiled and rendered live in a sandbox). Audit it for REAL defects and fix them; if it is already good, return it unchanged.
+const POLISH_SYSTEM = `${AGENT_ROLE}
+
+You are doing a FINAL QA POLISH pass on a single live-rendered React component (it is compiled and rendered live in a sandbox). Audit it for REAL defects and fix them; if it is already good, return it unchanged.
 
 OUTPUT RULES (strict):
 - Output ONLY the component code. No markdown fences, no prose, no imports, no exports, no TypeScript annotations.

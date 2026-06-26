@@ -11,6 +11,7 @@
  */
 
 import { extractJson, relayChat, type ChatMessage } from './relay'
+import { AGENT_ROLE } from './taste-skill'
 import type { SiteTemplate } from './templates'
 import type { IconResult } from './twentyfirst'
 import {
@@ -134,7 +135,9 @@ function sectionPlan(template: SiteTemplate): string[] {
   return [...kinds]
 }
 
-const SYSTEM = `You are a senior UI engineer with live access to the 21st.dev Magic MCP server. You are assembling a multi-page B2B website and must pull REAL, production-grade component source code for each major section, plus relevant brand/trust icons.
+const SYSTEM = `${AGENT_ROLE}
+
+You have live access to the 21st.dev Magic MCP server. You are assembling a multi-page B2B website and must pull REAL, production-grade component source code for each major section, plus relevant brand/trust icons.
 
 Available MCP tools:
 1. component_inspiration — searches 21st.dev and returns the actual source code of a matching UI component.
