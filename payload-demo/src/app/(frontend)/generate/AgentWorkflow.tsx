@@ -1,15 +1,27 @@
 'use client'
 
 import React from 'react'
-import { CheckCircle2, Circle, Loader2, Sparkles } from 'lucide-react'
+import {
+  Brain,
+  FileText,
+  ImageIcon,
+  Images,
+  LayoutTemplate,
+  type LucideIcon,
+  PencilRuler,
+  Send,
+  Sparkles,
+  Wand2,
+} from 'lucide-react'
 
 import {
-  Task,
-  TaskContent,
-  TaskItem,
-  TaskItemFile,
-  TaskTrigger,
-} from '@/components/ai-elements/task'
+  ChainOfThought,
+  ChainOfThoughtContent,
+  ChainOfThoughtHeader,
+  ChainOfThoughtSearchResult,
+  ChainOfThoughtSearchResults,
+  ChainOfThoughtStep,
+} from '@/components/ai-elements/chain-of-thought'
 import {
   Reasoning,
   ReasoningContent,
@@ -44,7 +56,20 @@ export type WorkflowMcpCall = {
 
 type StepState = 'pending' | 'active' | 'done'
 
-const STEP_ORDER = ['upload', 'parse', 'read', 'plan', 'inspire', 'image', 'write', 'jsx'] as const
+const STEP_ORDER = ['upload', 'parse', 'read', 'plan', 'inspire', 'image', 'write', 'jsx', 'sections'] as const
+type StepKey = (typeof STEP_ORDER)[number]
+
+const STEP_ICONS: Record<StepKey, LucideIcon> = {
+  upload: Images,
+  parse: FileText,
+  read: ImageIcon,
+  plan: LayoutTemplate,
+  inspire: Sparkles,
+  image: Wand2,
+  write: PencilRuler,
+  jsx: Send,
+  sections: Sparkles,
+}
 
 function fallbackLabel(key: string): string {
   switch (key) {
@@ -57,22 +82,25 @@ function fallbackLabel(key: string): string {
     case 'plan':
       return '规划版式与风格'
     case 'inspire':
-      return '搜索 21st.dev 组件与图标'
+      return '通过 21st.dev MCP 搜索组件与图标'
     case 'image':
       return '用 gpt-image-2 生成场景与装饰图'
     case 'write':
       return '撰写文案与组装版块'
     case 'jsx':
       return '编写实时渲染的 Hero 组件'
+    case 'sections':
+      return '用 21st 组件编写各版块（实时渲染）'
     default:
       return key
   }
 }
 
-function StepIcon({ state }: { state: StepState }) {
-  if (state === 'done') return <CheckCircle2 className="size-4 text-green-600" />
-  if (state === 'active') return <Loader2 className="size-4 animate-spin text-primary" />
-  return <Circle className="size-4 text-muted-foreground/50" />
+/** Map the streaming step status to the chain-of-thought visual status. */
+function cotStatus(state: StepState): 'complete' | 'active' | 'pending' {
+  if (state === 'done') return 'complete'
+  if (state === 'active') return 'active'
+  return 'pending'
 }
 
 export const AgentWorkflow: React.FC<{
@@ -100,213 +128,163 @@ export const AgentWorkflow: React.FC<{
     const s = steps.find((x) => x.key === key)
     return (s?.status as StepState) ?? 'pending'
   }
-  const labelOf = (key: string) =>
-    steps.find((x) => x.key === key)?.label ?? fallbackLabel(key)
+  const labelOf = (key: string) => steps.find((x) => x.key === key)?.label ?? fallbackLabel(key)
 
   const doneCount = STEP_ORDER.filter((k) => stateOf(k) === 'done').length
-  const planTitle = running
-    ? `设计 Agent 工作中… (${doneCount}/${STEP_ORDER.length})`
-    : `设计 Agent 工作流 (${doneCount}/${STEP_ORDER.length})`
+  const headerTitle = running
+    ? `设计 Agent 思考中… (${doneCount}/${STEP_ORDER.length})`
+    : `设计 Agent 思维链 (${doneCount}/${STEP_ORDER.length})`
 
-  // 21st.dev tool call state
-  const inspireState = stateOf('inspire')
   const hasInspiration =
     !!inspiration && (inspiration.components.length > 0 || inspiration.icons.length > 0)
-  const toolState =
-    inspireState === 'done' || hasInspiration
-      ? 'output-available'
-      : inspireState === 'active'
-        ? 'input-available'
-        : 'input-streaming'
-
   const analysisStreaming = running && stateOf('write') !== 'done' && analysis.length > 0
 
   return (
-    <div className="flex flex-col gap-2">
-      {/* Plan / task list */}
-      <Task defaultOpen className="rounded-lg border bg-card p-4">
-        <TaskTrigger title={planTitle}>
-          <div className="flex w-full cursor-pointer items-center gap-2 text-sm font-medium">
-            <Sparkles className="size-4 text-primary" />
-            <span>{planTitle}</span>
-          </div>
-        </TaskTrigger>
-        <TaskContent>
-          {STEP_ORDER.map((key) => {
-            const state = stateOf(key)
-            return (
-              <TaskItem key={key} className="flex items-center gap-2">
-                <StepIcon state={state} />
-                <span className={state === 'pending' ? 'text-muted-foreground/60' : 'text-foreground'}>
-                  {labelOf(key)}
-                </span>
-              </TaskItem>
-            )
-          })}
-          {chosenTemplate && (
-            <TaskItem className="flex items-center gap-2 pt-1">
-              <span className="text-muted-foreground">选定模板</span>
-              <TaskItemFile>{chosenTemplate.name}</TaskItemFile>
-            </TaskItem>
-          )}
-          {chosenTheme && (
-            <TaskItem className="flex items-center gap-2 pt-1">
-              <span className="text-muted-foreground">选定主题</span>
-              <TaskItemFile>{chosenTheme.name}</TaskItemFile>
-            </TaskItem>
-          )}
-        </TaskContent>
-      </Task>
+    <ChainOfThought className="max-w-none" defaultOpen>
+      <ChainOfThoughtHeader>
+        <span className="flex items-center gap-2">
+          <Brain className="size-4 text-primary" />
+          {headerTitle}
+        </span>
+      </ChainOfThoughtHeader>
 
-      {/* Streaming reasoning (design thinking) */}
-      {(analysis || running) && (
-        <div className="rounded-lg border bg-card p-4">
-          <Reasoning isStreaming={analysisStreaming} defaultOpen>
-            <ReasoningTrigger />
-            <ReasoningContent>{analysis || '正在读图分析设计方向…'}</ReasoningContent>
-          </Reasoning>
-        </div>
-      )}
+      <ChainOfThoughtContent>
+        {STEP_ORDER.map((key) => {
+          const state = stateOf(key)
+          const status = cotStatus(state)
 
-      {/* 21st.dev Magic MCP — live multi-round tool calls */}
-      {(mcpCalls.length > 0 || mcpToolNames.length > 0) && (
-        <div className="flex flex-col gap-2 rounded-lg border bg-card p-3">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <Sparkles className="size-4 text-primary" />
-            <span>21st.dev Magic MCP · 多轮 tool-call</span>
-          </div>
-          {mcpToolNames.length > 0 && (
-            <p className="text-xs text-muted-foreground">
-              MCP server 工具：{mcpToolNames.map((t) => `\`${t}\``).join('、')}
-            </p>
-          )}
-          {mcpCalls.map((call) => {
-            const callState =
-              call.status === 'done'
-                ? 'output-available'
-                : call.status === 'error'
-                  ? 'output-error'
-                  : 'input-available'
-            const title =
-              call.tool === 'logo_search'
-                ? `logo_search · ${call.query}`
-                : `component_inspiration · ${call.section ?? ''} · "${call.query}"`
-            return (
-              <Tool key={call.id} defaultOpen={!!call.codePreview}>
-                <ToolHeader
-                  type="dynamic-tool"
-                  toolName={call.tool}
-                  state={callState}
-                  title={`#${call.round} ${title}`}
-                />
-                <ToolContent>
-                  <ToolInput
-                    input={{
-                      tool:
-                        call.tool === 'logo_search'
-                          ? 'logo_search'
-                          : '21st_magic_component_inspiration',
-                      section: call.section,
-                      searchQuery: call.query,
-                    }}
-                  />
-                  {call.status !== 'running' && (
-                    <ToolOutput
-                      errorText={call.status === 'error' ? 'MCP 调用失败' : undefined}
-                      output={
-                        <div className="flex flex-col gap-2 p-3">
-                          <div className="text-sm">
-                            {call.componentName ? (
-                              <span className="font-medium">{call.componentName}</span>
-                            ) : (
-                              <span className="text-muted-foreground">
-                                {call.resultCount ?? 0} 个结果
-                              </span>
-                            )}
-                            {typeof call.similarity === 'number' && (
-                              <span className="text-muted-foreground">
-                                {' '}
-                                （匹配度 {call.similarity.toFixed(2)}）
-                              </span>
-                            )}
-                          </div>
-                          {call.codePreview && (
-                            <CodeBlock
-                              code={call.codePreview}
-                              language="tsx"
-                              className="max-h-72 overflow-auto"
+          // The "read"/"plan" steps surface the streaming design reasoning.
+          const showReasoning = key === 'read' && (analysis || running)
+          // The "plan" step surfaces the chosen template + theme chips.
+          const showPlanChips = key === 'plan' && (chosenTemplate || chosenTheme)
+          // The "inspire" step nests the live 21st.dev MCP tool calls.
+          const showMcp =
+            key === 'inspire' && (mcpCalls.length > 0 || mcpToolNames.length > 0 || hasInspiration)
+
+          return (
+            <ChainOfThoughtStep
+              key={key}
+              icon={STEP_ICONS[key]}
+              label={labelOf(key)}
+              status={status}
+            >
+              {showPlanChips && (
+                <ChainOfThoughtSearchResults>
+                  {chosenTemplate && (
+                    <ChainOfThoughtSearchResult>
+                      <LayoutTemplate className="size-3" /> 模板 · {chosenTemplate.name}
+                    </ChainOfThoughtSearchResult>
+                  )}
+                  {chosenTheme && (
+                    <ChainOfThoughtSearchResult>
+                      <Sparkles className="size-3" /> 主题 · {chosenTheme.name}
+                    </ChainOfThoughtSearchResult>
+                  )}
+                </ChainOfThoughtSearchResults>
+              )}
+
+              {showReasoning && (
+                <div className="rounded-lg border bg-card p-3">
+                  <Reasoning isStreaming={analysisStreaming} defaultOpen>
+                    <ReasoningTrigger />
+                    <ReasoningContent>{analysis || '正在读图分析设计方向…'}</ReasoningContent>
+                  </Reasoning>
+                </div>
+              )}
+
+              {showMcp && (
+                <div className="flex flex-col gap-2">
+                  {mcpToolNames.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      MCP server 工具：{mcpToolNames.map((t) => `\`${t}\``).join('、')}
+                    </p>
+                  )}
+                  {mcpCalls.map((call) => {
+                    const callState =
+                      call.status === 'done'
+                        ? 'output-available'
+                        : call.status === 'error'
+                          ? 'output-error'
+                          : 'input-available'
+                    const title =
+                      call.tool === 'logo_search'
+                        ? `logo_search · ${call.query}`
+                        : `component_inspiration · ${call.section ?? ''} · "${call.query}"`
+                    return (
+                      <Tool key={call.id} defaultOpen={!!call.codePreview}>
+                        <ToolHeader
+                          type="dynamic-tool"
+                          toolName={call.tool}
+                          state={callState}
+                          title={`#${call.round} ${title}`}
+                        />
+                        <ToolContent>
+                          <ToolInput
+                            input={{
+                              tool:
+                                call.tool === 'logo_search'
+                                  ? 'logo_search'
+                                  : '21st_magic_component_inspiration',
+                              section: call.section,
+                              searchQuery: call.query,
+                            }}
+                          />
+                          {call.status !== 'running' && (
+                            <ToolOutput
+                              errorText={call.status === 'error' ? 'MCP 调用失败' : undefined}
+                              output={
+                                <div className="flex flex-col gap-2 p-3">
+                                  <div className="text-sm">
+                                    {call.componentName ? (
+                                      <span className="font-medium">{call.componentName}</span>
+                                    ) : (
+                                      <span className="text-muted-foreground">
+                                        {call.resultCount ?? 0} 个结果
+                                      </span>
+                                    )}
+                                    {typeof call.similarity === 'number' && (
+                                      <span className="text-muted-foreground">
+                                        {' '}
+                                        （匹配度 {call.similarity.toFixed(2)}）
+                                      </span>
+                                    )}
+                                  </div>
+                                  {call.codePreview && (
+                                    <CodeBlock
+                                      code={call.codePreview}
+                                      language="tsx"
+                                      className="max-h-72 overflow-auto"
+                                    />
+                                  )}
+                                </div>
+                              }
                             />
                           )}
-                        </div>
-                      }
-                    />
-                  )}
-                </ToolContent>
-              </Tool>
-            )
-          })}
-        </div>
-      )}
+                        </ToolContent>
+                      </Tool>
+                    )
+                  })}
 
-      {/* 21st.dev inspiration summary (icons + component names) */}
-      {(inspireState !== 'pending' || hasInspiration) && (
-        <Tool defaultOpen={hasInspiration}>
-          <ToolHeader type="dynamic-tool" toolName="21st.dev_search" state={toolState} title="21st.dev 组件与图标汇总" />
-          <ToolContent>
-            <ToolInput
-              input={{
-                source: 'magic.21st.dev (MCP)',
-                tools: mcpToolNames.length ? mcpToolNames : ['component_inspiration', 'logo_search'],
-              }}
-            />
-            {hasInspiration && (
-              <ToolOutput
-                errorText={undefined}
-                output={
-                  <div className="flex flex-col gap-3 p-3">
-                    {inspiration!.components.length > 0 && (
-                      <div>
-                        <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          组件灵感 ({inspiration!.components.length})
-                        </p>
-                        <ul className="flex flex-col gap-1 text-sm">
-                          {inspiration!.components.map((c, i) => (
-                            <li key={i}>
-                              <span className="font-medium">{c.name}</span>
-                              {c.summary ? (
-                                <span className="text-muted-foreground"> — {c.summary}</span>
-                              ) : null}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {inspiration!.icons.length > 0 && (
-                      <div>
-                        <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          图标 ({inspiration!.icons.length})
-                        </p>
-                        <div className="flex flex-wrap items-center gap-3">
-                          {inspiration!.icons.map((ic, i) => (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              key={i}
-                              src={ic.svgUrl}
-                              alt={ic.title}
-                              title={ic.title}
-                              className="h-7 w-7"
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                }
-              />
-            )}
-          </ToolContent>
-        </Tool>
-      )}
+                  {hasInspiration && inspiration!.icons.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-3 pt-1">
+                      {inspiration!.icons.map((ic, i) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          key={i}
+                          src={ic.svgUrl}
+                          alt={ic.title}
+                          title={ic.title}
+                          className="h-6 w-6"
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </ChainOfThoughtStep>
+          )
+        })}
+      </ChainOfThoughtContent>
 
       {/* Raw log stream */}
       {logs.length > 0 && (
@@ -316,6 +294,6 @@ export const AgentWorkflow: React.FC<{
           ))}
         </div>
       )}
-    </div>
+    </ChainOfThought>
   )
 }

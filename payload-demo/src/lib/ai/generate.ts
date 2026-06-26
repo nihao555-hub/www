@@ -195,6 +195,27 @@ Output rules (CRITICAL):
 
 Return the raw component code now.`
 
+// Section authoring (Route 2, beyond hero). The same live-JSX sandbox is used to
+// render bespoke sections (features/stats/showcase/steps/cta/faq/…) so the real
+// 21st.dev component pulled for that section actually shapes the final design,
+// not just the hero. Copy is baked into the JSX verbatim (already written in the
+// target language) so the only runtime scope needed is { theme, images }.
+const SECTION_JSX_SYSTEM = `You are a senior front-end engineer + designer (v0 / Lovable level). Write ONE self-contained React function component for a single website SECTION (NOT the hero). This code is compiled and rendered LIVE, so it must be correct, safe, and visually striking.
+
+Output rules (CRITICAL):
+- Output ONLY the component code. No markdown fences, no prose, no imports, no exports.
+- Define exactly: function Section({ theme, images }) { ... return ( ...jsx... ) }
+- Plain JSX only (no TypeScript types/annotations).
+- Do NOT import anything. These identifiers are already in scope: React hooks (useState, useEffect, useRef, useMemo), motion (from framer-motion, e.g. <motion.div>), AnimatePresence, all lucide-react icons by name (e.g. ArrowRight, CheckCircle2, ShieldCheck), and cn(). Do not use window/document/fetch/eval.
+- Style with a mix of Tailwind utility classes AND inline style using the theme tokens. Available theme.colors keys: background, foreground, card, cardForeground, primary, primaryForeground, secondary, muted, mutedForeground, accent, border. Example: style={{ background: theme.colors.background, color: theme.colors.foreground }}.
+- BAKE IN the provided section copy VERBATIM (it is already written in the target language — do not translate, summarize, or invent new copy). Render every item/title/stat exactly as given.
+- The section is rendered inside the page flow, so use a <section> wrapper with generous vertical padding (e.g. py-16 md:py-24) and a centered max-w container. Do NOT make it full-screen.
+- If images?.length, you may use them for cards/showcase/decoration; always guard with optional chaining and only reference indexes that exist.
+- The component must render without runtime errors for any subset of props.
+- A "REFERENCE COMPONENT" (real code pulled live from 21st.dev) is the design blueprint: adapt its layout, composition, visual rhythm, decorative details and motion into THIS section. Strip its imports/exports/TypeScript and recolor it with the theme tokens. Re-express its structure cleanly — do not copy it verbatim and do not keep its placeholder copy.
+
+Return the raw component code now.`
+
 function stripCodeFence(s: string): string {
   const t = s.trim()
   const fence = t.match(/^```(?:[a-zA-Z]+)?\n([\s\S]*?)\n```$/)
@@ -698,6 +719,102 @@ export async function runGeneration(
     })
   }
   emit({ type: 'step', key: 'jsx', label: 'Coding a bespoke hero (live JSX)', status: 'done' })
+
+  // ---- Phase 5: author bespoke, live-rendered JSX for the other sections ---
+  // (Route 2 beyond the hero). Each section that has a matching real component
+  // pulled from 21st.dev via MCP gets bespoke JSX authored with that component
+  // as its design blueprint, then replaces the templated section in-place (with
+  // the original templated section kept as a compile/runtime fallback).
+  emit({ type: 'step', key: 'sections', label: 'Coding bespoke sections (live JSX)', status: 'active' })
+  try {
+    const refs = agentResult?.refs ?? []
+    // Section kinds we can re-express as live JSX (skip gallery/contact/richtext
+    // which are data/form driven, and skip already-jsx sections).
+    const JSXABLE = new Set(['features', 'stats', 'showcase', 'steps', 'cta', 'faq'])
+    const findRef = (kind: string) => {
+      const k = kind.toLowerCase()
+      return (
+        refs.find((r) => r.section.toLowerCase() === k) ??
+        refs.find((r) => r.section.toLowerCase().includes(k) || k.includes(r.section.toLowerCase())) ??
+        null
+      )
+    }
+    const MAX_SECTIONS = 6
+    let authored = 0
+    for (const page of spec.pages) {
+      for (let i = 0; i < page.sections.length; i++) {
+        if (authored >= MAX_SECTIONS) break
+        const section = page.sections[i]
+        if (section.kind === 'jsx' || !JSXABLE.has(section.kind)) continue
+        const ref = findRef(section.kind)
+        if (!ref) continue // only convert sections we actually have a 21st blueprint for
+        const refBlock = [
+          '',
+          `REFERENCE COMPONENT — real "${ref.componentName}" code pulled live from 21st.dev via MCP${
+            typeof ref.similarity === 'number' ? ` (match ${ref.similarity.toFixed(2)})` : ''
+          }. Adapt its structure/composition/motion (see system rules):`,
+          '```tsx',
+          (ref.demoCode || ref.code).slice(0, 3500),
+          '```',
+        ].join('\n')
+        const sectionUser = [
+          `This is the "${section.kind}" section of a ${
+            merchant.industry || merchant.name || 'business'
+          } website.`,
+          '',
+          `Theme tokens (use via theme.colors.*): ${JSON.stringify(theme.colors)}`,
+          `Design family vibe: ${design.name} — ${design.description}`,
+          '',
+          'Section copy to render (already written in the target language — bake it in verbatim, do not translate or invent new copy):',
+          JSON.stringify(section, null, 2),
+          refBlock,
+          '',
+          `There are ${allImages.length} image(s) available as the \`images\` prop (array of URLs).`,
+          'Output ONLY the Section component code now.',
+        ].join('\n')
+        try {
+          const reply = await relayChat([
+            { role: 'system', content: SECTION_JSX_SYSTEM },
+            { role: 'user', content: sectionUser },
+          ])
+          const sectionCode = stripCodeFence(reply)
+          if (compileJsx(sectionCode)) {
+            page.sections[i] = {
+              kind: 'jsx',
+              code: sectionCode,
+              source: `21st:${ref.componentName}`,
+              fallback: section,
+            }
+            authored++
+            emit({
+              type: 'log',
+              message: `Live JSX "${section.kind}" compiled OK (blueprint: ${ref.componentName}) — rendering real component`,
+            })
+          } else {
+            emit({
+              type: 'log',
+              message: `Live JSX "${section.kind}" invalid; keeping templated section`,
+            })
+          }
+        } catch (err) {
+          emit({
+            type: 'log',
+            message: `Live JSX "${section.kind}" failed (${
+              err instanceof Error ? err.message : 'error'
+            }); keeping templated section`,
+          })
+        }
+      }
+      if (authored >= MAX_SECTIONS) break
+    }
+    emit({ type: 'log', message: `Authored ${authored} bespoke section(s) from 21st.dev blueprints` })
+  } catch (err) {
+    emit({
+      type: 'log',
+      message: `Section JSX authoring skipped (${err instanceof Error ? err.message : 'error'})`,
+    })
+  }
+  emit({ type: 'step', key: 'sections', label: 'Coding bespoke sections (live JSX)', status: 'done' })
 
   emit({ type: 'spec', spec })
   return { spec, generatedImages }
