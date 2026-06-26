@@ -4,16 +4,7 @@ import React, { useCallback, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
+import { PromptInputBox } from '@/components/ui/prompt-input-box'
 import { THEMES } from '@/lib/ai/themes'
 
 const LANGUAGES: { code: string; label: string }[] = [
@@ -45,11 +36,9 @@ type DoneResult = {
   pages?: number
 }
 
-const STEP_ORDER = ['upload', 'read', 'plan', 'inspire', 'write']
+const STEP_ORDER = ['upload', 'parse', 'read', 'plan', 'inspire', 'write']
 
 export const GenerateForm: React.FC = () => {
-  const [files, setFiles] = useState<File[]>([])
-  const [previews, setPreviews] = useState<string[]>([])
   const [language, setLanguage] = useState('en')
   const [themeId, setThemeId] = useState('auto')
 
@@ -64,16 +53,15 @@ export const GenerateForm: React.FC = () => {
 
   const analysisRef = useRef<HTMLDivElement>(null)
 
-  const sortedThemes = useMemo(
-    () => [...THEMES].sort((a, b) => a.name.localeCompare(b.name)),
+  const themeOptions = useMemo(
+    () => [
+      { id: 'auto', label: '✨ AI 自动选择主题' },
+      ...[...THEMES]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((t) => ({ id: t.id, label: `${t.name} — ${t.mood}` })),
+    ],
     [],
   )
-
-  const onFiles = (list: FileList | null) => {
-    const arr = Array.from(list ?? [])
-    setFiles(arr)
-    setPreviews(arr.map((f) => URL.createObjectURL(f)))
-  }
 
   const upsertStep = useCallback((s: Step) => {
     setSteps((prev) => {
@@ -85,10 +73,14 @@ export const GenerateForm: React.FC = () => {
     })
   }, [])
 
-  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    if (files.length === 0) {
-      setError('请至少上传一张商品图。')
+  const handleSend = async (message: string, sentFiles: File[]) => {
+    if (running) return
+    if (sentFiles.length === 0) {
+      setError('请至少上传一张商品图（AI 看图设计）。')
+      return
+    }
+    if (!message.trim()) {
+      setError('请用一段话描述你的业务。')
       return
     }
 
@@ -101,14 +93,11 @@ export const GenerateForm: React.FC = () => {
     setLogs([])
     setRunning(true)
 
-    const formEl = e.currentTarget
     const data = new FormData()
-    data.set('name', (formEl.elements.namedItem('name') as HTMLInputElement).value)
-    data.set('industry', (formEl.elements.namedItem('industry') as HTMLInputElement).value)
-    data.set('description', (formEl.elements.namedItem('description') as HTMLTextAreaElement).value)
+    data.set('brief', message)
     data.set('language', language)
     if (themeId !== 'auto') data.set('themeId', themeId)
-    files.forEach((f) => data.append('images', f))
+    sentFiles.forEach((f) => data.append('images', f))
 
     try {
       const res = await fetch('/next/generate', { method: 'POST', body: data })
@@ -178,115 +167,46 @@ export const GenerateForm: React.FC = () => {
   const showWorkspace = running || result || steps.length > 0
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[420px_1fr]">
-      {/* ---- Control panel ---- */}
-      <Card className="h-fit">
-        <CardHeader>
-          <CardTitle>生成设置</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={onSubmit} className="flex flex-col gap-5">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="name">商家 / 品牌名称</Label>
-              <Input id="name" name="name" placeholder="例如：晨光智能家居" />
-            </div>
+    <div className="flex flex-col gap-8">
+      {/* ---- Single-box brief ---- */}
+      <div className="mx-auto w-full max-w-3xl">
+        <h2 className="text-center text-2xl font-semibold tracking-tight">
+          一句话生成你的独立站
+        </h2>
+        <p className="mt-2 text-center text-sm text-muted-foreground">
+          把所有需求写进一个输入框（品牌、行业、卖点、目标客户…），上传商品图，AI 自动拆解并生成多页独立站。
+        </p>
 
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="industry">行业（可选）</Label>
-              <Input id="industry" name="industry" placeholder="智能家居 / 户外装备 / 美妆" />
-            </div>
+        <div className="mt-5">
+          <PromptInputBox
+            isLoading={running}
+            placeholder="例如：我们是恒泰钢管厂，做无缝钢管和镀锌管，面向海外工程采购商，主打 ISO 认证、20 年出口经验、OEM/ODM。整体走工业风、专业可信。"
+            languages={LANGUAGES}
+            language={language}
+            onLanguageChange={setLanguage}
+            themes={themeOptions}
+            themeId={themeId}
+            onThemeChange={setThemeId}
+            onSend={handleSend}
+            maxImages={6}
+          />
+        </div>
 
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="description">简介 / 卖点（可选）</Label>
-              <Textarea
-                id="description"
-                name="description"
-                rows={3}
-                placeholder="一句话描述你卖什么、面向谁、有什么优势。"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-2">
-                <Label>生成语言</Label>
-                <Select value={language} onValueChange={setLanguage}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {LANGUAGES.map((l) => (
-                      <SelectItem key={l.code} value={l.code}>
-                        {l.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <Label>风格主题</Label>
-                <Select value={themeId} onValueChange={setThemeId}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="auto">✨ AI 自动选择</SelectItem>
-                    {sortedThemes.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.name} — {t.mood}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="images">商品图（1-6 张，AI 看图设计）</Label>
-              <Input
-                id="images"
-                name="images"
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={(e) => onFiles(e.target.files)}
-              />
-              {previews.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {previews.map((src, i) => (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      key={i}
-                      src={src}
-                      alt={`preview ${i + 1}`}
-                      className="h-16 w-16 rounded-md object-cover border border-border"
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <Button type="submit" disabled={running} size="lg">
-              {running ? 'AI 设计中…' : '一键生成独立站'}
-            </Button>
-
-            {error && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-                {error}
-              </div>
-            )}
-          </form>
-        </CardContent>
-      </Card>
+        {error && (
+          <div className="mt-3 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+      </div>
 
       {/* ---- Live workspace ---- */}
       <div className="flex flex-col gap-6">
         {!showWorkspace && (
-          <Card className="flex min-h-[420px] items-center justify-center">
+          <Card className="flex min-h-[280px] items-center justify-center">
             <CardContent className="py-16 text-center text-muted-foreground">
               <p className="text-lg font-medium">实时设计工作台</p>
               <p className="mt-2 text-sm">
-                填好左侧信息并上传商品图后，这里会实时显示 AI 设计 agent 的工作过程与独立站预览。
+                在上方输入框描述业务并上传商品图后，这里会实时显示 AI 设计 agent 的工作过程与独立站预览。
               </p>
             </CardContent>
           </Card>
@@ -440,6 +360,8 @@ function defaultStepLabel(key: string): string {
   switch (key) {
     case 'upload':
       return '上传图片'
+    case 'parse':
+      return '理解你的需求'
     case 'read':
       return '读取商品图'
     case 'plan':

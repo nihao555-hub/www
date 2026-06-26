@@ -44,6 +44,7 @@ export async function POST(req: Request): Promise<Response> {
     name: String(form.get('name') ?? '').trim(),
     industry: String(form.get('industry') ?? '').trim() || undefined,
     description: String(form.get('description') ?? '').trim() || undefined,
+    brief: String(form.get('brief') ?? '').trim() || undefined,
     language: String(form.get('language') ?? '').trim() || undefined,
     themeId: String(form.get('themeId') ?? '').trim() || undefined,
   }
