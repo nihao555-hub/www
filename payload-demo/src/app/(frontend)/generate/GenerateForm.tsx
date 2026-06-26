@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useCallback, useMemo, useState } from 'react'
+import { Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -185,6 +186,12 @@ export const GenerateForm: React.FC = () => {
   }
 
   const showWorkspace = running || result || steps.length > 0
+  const currentStepLabel = useMemo(() => {
+    const active = [...steps].reverse().find((s) => s.status === 'active')
+    if (active) return active.label
+    const lastDone = [...steps].reverse().find((s) => s.status === 'done')
+    return lastDone?.label ?? ''
+  }, [steps])
 
   return (
     <div className="flex flex-col gap-8">
@@ -220,72 +227,84 @@ export const GenerateForm: React.FC = () => {
       </div>
 
       {/* ---- Live workspace ---- */}
-      <div className="flex flex-col gap-6">
-        {!showWorkspace && (
-          <Card className="flex min-h-[280px] items-center justify-center">
-            <CardContent className="py-16 text-center text-muted-foreground">
-              <p className="text-lg font-medium">实时设计工作台</p>
-              <p className="mt-2 text-sm">
-                在上方输入框描述业务并上传商品图后，这里会实时显示 AI 设计 agent 的工作过程与独立站预览。
-              </p>
+      {!showWorkspace && (
+        <Card className="flex min-h-[280px] items-center justify-center">
+          <CardContent className="py-16 text-center text-muted-foreground">
+            <p className="text-lg font-medium">实时设计工作台</p>
+            <p className="mt-2 text-sm">
+              在上方输入框描述业务并上传商品图后，左侧会实时显示 AI 设计 agent 的思考过程，右侧实时展示生成的独立站。
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {showWorkspace && (
+        <div className="flex flex-col items-start gap-6 lg:flex-row">
+          {/* Left: real-time agent thinking (ai-elements chain-of-thought) */}
+          <Card className="w-full lg:w-[44%] lg:flex-none">
+            <CardHeader>
+              <CardTitle>设计 Agent 实时思考</CardTitle>
+            </CardHeader>
+            <CardContent className="max-h-[78vh] overflow-auto">
+              <AgentWorkflow
+                steps={steps}
+                analysis={analysis}
+                inspiration={inspiration}
+                mcpCalls={mcpCalls}
+                mcpToolNames={mcpToolNames}
+                logs={logs}
+                running={running}
+                chosenTheme={chosenTheme}
+                chosenTemplate={chosenTemplate}
+              />
             </CardContent>
           </Card>
-        )}
 
-        {showWorkspace && (
-          <>
-            {/* Real-time agent workflow (ai-elements) */}
-            <Card>
-              <CardHeader>
-                <CardTitle>设计 Agent 实时工作流</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <AgentWorkflow
-                  steps={steps}
-                  analysis={analysis}
-                  inspiration={inspiration}
-                  mcpCalls={mcpCalls}
-                  mcpToolNames={mcpToolNames}
-                  logs={logs}
-                  running={running}
-                  chosenTheme={chosenTheme}
-                  chosenTemplate={chosenTemplate}
-                />
-              </CardContent>
-            </Card>
-
-            {/* Live preview */}
-            {result && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>独立站实时预览 — {result.siteName}</CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-4">
-                  <div className="overflow-hidden rounded-lg border border-border">
-                    <iframe
-                      src={result.previewUrl}
-                      title="preview"
-                      className="h-[640px] w-full bg-white"
-                    />
+          {/* Right: live independent-site preview */}
+          <Card className="w-full lg:flex-1 lg:sticky lg:top-6">
+            <CardHeader>
+              <CardTitle>
+                独立站实时预览{result ? ` — ${result.siteName}` : ''}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="overflow-hidden rounded-lg border border-border">
+                {result ? (
+                  <iframe
+                    src={result.previewUrl}
+                    title="preview"
+                    className="h-[78vh] w-full bg-white"
+                  />
+                ) : (
+                  <div className="flex h-[78vh] flex-col items-center justify-center gap-3 bg-muted/30 text-center text-muted-foreground">
+                    <Loader2 className="size-7 animate-spin text-primary" />
+                    <p className="text-sm font-medium">正在生成你的独立站…</p>
+                    <p className="max-w-xs text-xs">
+                      {currentStepLabel
+                        ? `当前：${currentStepLabel}`
+                        : 'AI 正在读图、规划版式并组装版块，生成完成后这里会实时呈现站点。'}
+                    </p>
                   </div>
-                  <div className="flex flex-wrap gap-3">
-                    <Button asChild>
-                      <a href={result.previewUrl} target="_blank" rel="noreferrer">
-                        新标签页打开
-                      </a>
-                    </Button>
-                    <Button asChild variant="outline">
-                      <a href={result.adminUrl} target="_blank" rel="noreferrer">
-                        在后台编辑
-                      </a>
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </>
-        )}
-      </div>
+                )}
+              </div>
+              {result && (
+                <div className="flex flex-wrap gap-3">
+                  <Button asChild>
+                    <a href={result.previewUrl} target="_blank" rel="noreferrer">
+                      新标签页打开
+                    </a>
+                  </Button>
+                  <Button asChild variant="outline">
+                    <a href={result.adminUrl} target="_blank" rel="noreferrer">
+                      在后台编辑
+                    </a>
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }
