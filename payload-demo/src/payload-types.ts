@@ -71,6 +71,7 @@ export interface Config {
     posts: Post;
     media: Media;
     categories: Category;
+    'ai-sites': AiSite;
     users: User;
     redirects: Redirect;
     forms: Form;
@@ -93,6 +94,7 @@ export interface Config {
     posts: PostsSelect<false> | PostsSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
     categories: CategoriesSelect<false> | CategoriesSelect<true>;
+    'ai-sites': AiSitesSelect<false> | AiSitesSelect<true>;
     users: UsersSelect<false> | UsersSelect<true>;
     redirects: RedirectsSelect<false> | RedirectsSelect<true>;
     forms: FormsSelect<false> | FormsSelect<true>;
@@ -108,7 +110,12 @@ export interface Config {
   db: {
     defaultIDType: number;
   };
-  fallbackLocale: null;
+  fallbackLocale:
+    | ('false' | 'none' | 'null')
+    | false
+    | null
+    | ('en' | 'zh' | 'zh-TW' | 'es' | 'fr' | 'de' | 'ja' | 'ko' | 'pt' | 'ar')
+    | ('en' | 'zh' | 'zh-TW' | 'es' | 'fr' | 'de' | 'ja' | 'ko' | 'pt' | 'ar')[];
   globals: {
     header: Header;
     footer: Footer;
@@ -117,7 +124,7 @@ export interface Config {
     header: HeaderSelect<false> | HeaderSelect<true>;
     footer: FooterSelect<false> | FooterSelect<true>;
   };
-  locale: null;
+  locale: 'en' | 'zh' | 'zh-TW' | 'es' | 'fr' | 'de' | 'ja' | 'ko' | 'pt' | 'ar';
   widgets: {
     collections: CollectionsWidget;
   };
@@ -210,6 +217,44 @@ export interface Page {
     image?: (number | null) | Media;
     description?: string | null;
   };
+  /**
+   * Visual style preset. The AI picks one when generating; you can change it anytime.
+   */
+  theme?:
+    | (
+        | 'nordic-minimal'
+        | 'paper-mono'
+        | 'electric-indigo'
+        | 'cyber-night'
+        | 'ocean-breeze'
+        | 'corporate-navy'
+        | 'emerald-trust'
+        | 'sunset-coral'
+        | 'magenta-pop'
+        | 'citrus-punch'
+        | 'noir-luxe'
+        | 'champagne-serif'
+        | 'royal-plum'
+        | 'terracotta-earth'
+        | 'sage-botanical'
+        | 'desert-sand'
+        | 'graphite-slate'
+        | 'midnight-aurora'
+        | 'crimson-edge'
+        | 'arctic-frost'
+        | 'honey-amber'
+        | 'rose-quartz'
+        | 'forest-deep'
+        | 'mono-brutalist'
+        | 'pastel-soft'
+        | 'steel-industrial'
+        | 'lavender-calm'
+        | 'teal-modern'
+        | 'obsidian-mono'
+        | 'mint-fresh'
+        | 'cobalt-power'
+      )
+    | null;
   publishedAt?: string | null;
   /**
    * When enabled, the slug will auto-generate from the title field on save and autosave.
@@ -783,6 +828,39 @@ export interface Form {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ai-sites".
+ */
+export interface AiSite {
+  id: number;
+  siteName: string;
+  slug: string;
+  themeId?: string | null;
+  /**
+   * Uploaded product images, ordered to match spec image indexes.
+   */
+  images?:
+    | {
+        image: number | Media;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * The full AI-generated SiteSpec (pages, sections, theme).
+   */
+  spec:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "redirects".
  */
 export interface Redirect {
@@ -988,6 +1066,10 @@ export interface PayloadLockedDocument {
         value: number | Category;
       } | null)
     | ({
+        relationTo: 'ai-sites';
+        value: number | AiSite;
+      } | null)
+    | ({
         relationTo: 'users';
         value: number | User;
       } | null)
@@ -1097,6 +1179,7 @@ export interface PagesSelect<T extends boolean = true> {
         image?: T;
         description?: T;
       };
+  theme?: T;
   publishedAt?: T;
   generateSlug?: T;
   slug?: T;
@@ -1330,6 +1413,24 @@ export interface CategoriesSelect<T extends boolean = true> {
         label?: T;
         id?: T;
       };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ai-sites_select".
+ */
+export interface AiSitesSelect<T extends boolean = true> {
+  siteName?: T;
+  slug?: T;
+  themeId?: T;
+  images?:
+    | T
+    | {
+        image?: T;
+        id?: T;
+      };
+  spec?: T;
   updatedAt?: T;
   createdAt?: T;
 }

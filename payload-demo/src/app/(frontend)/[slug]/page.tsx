@@ -12,6 +12,7 @@ import { RenderHero } from '@/heros/RenderHero'
 import { generateMeta } from '@/utilities/generateMeta'
 import PageClient from './page.client'
 import { LivePreviewListener } from '@/components/LivePreviewListener'
+import { SiteTheme } from '@/components/SiteTheme'
 
 export async function generateStaticParams() {
   const payload = await getPayload({ config: configPromise })
@@ -65,18 +66,21 @@ export default async function Page({ params: paramsPromise }: Args) {
   }
 
   const { hero, layout } = page
+  const themeId = (page as { theme?: string | null }).theme
 
   return (
-    <article className="pt-16 pb-24">
-      <PageClient />
-      {/* Allows redirects for valid pages too */}
-      <PayloadRedirects disableNotFound url={url} />
+    <SiteTheme themeId={themeId}>
+      <article className="pt-16 pb-24">
+        <PageClient />
+        {/* Allows redirects for valid pages too */}
+        <PayloadRedirects disableNotFound url={url} />
 
-      {draft && <LivePreviewListener />}
+        {draft && <LivePreviewListener />}
 
-      <RenderHero {...hero} />
-      <RenderBlocks blocks={layout} />
-    </article>
+        <RenderHero {...hero} />
+        <RenderBlocks blocks={layout} />
+      </article>
+    </SiteTheme>
   )
 }
 
