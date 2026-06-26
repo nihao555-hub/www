@@ -191,6 +191,7 @@ Output rules (CRITICAL):
 - If images?.length, use images[0] as a hero image or background (e.g. <img src={images[0]} .../> or backgroundImage). Always guard with optional chaining.
 - Make it full-bleed (w-full), high-contrast, responsive, with generous spacing and a clear primary CTA button using theme.colors.primary / primaryForeground. Subtle motion is welcome but keep it tasteful and not blocking.
 - The component must render without runtime errors for any subset of props.
+- If a "REFERENCE COMPONENT" (real code pulled live from 21st.dev) is provided, treat it as the design blueprint: adapt its layout, composition, visual rhythm, decorative details and motion into your Hero. Strip its imports/exports/TypeScript, swap its hardcoded copy for the {headline}/{subheadline}/{badges}/{ctas} props, and recolor it with the theme tokens. Do not copy it verbatim — re-express the same structure cleanly within the constraints above.
 
 Return the raw component code now.`
 
@@ -636,6 +637,22 @@ export async function runGeneration(
   try {
     const homeHero = spec.pages[0]?.hero
     if (homeHero) {
+      // Feed the real hero component pulled live from 21st.dev as the design
+      // blueprint so the MCP inspiration actually shapes the rendered hero
+      // (not just the JSON spec writer's "quality bar").
+      const heroRef =
+        agentResult?.refs.find((r) => /hero/i.test(r.section)) ?? agentResult?.refs[0] ?? null
+      const heroRefBlock = heroRef
+        ? [
+            '',
+            `REFERENCE COMPONENT — real "${heroRef.componentName}" code pulled live from 21st.dev via MCP${
+              typeof heroRef.similarity === 'number' ? ` (match ${heroRef.similarity.toFixed(2)})` : ''
+            }. Adapt its structure/composition/motion (see system rules):`,
+            '```tsx',
+            (heroRef.demoCode || heroRef.code).slice(0, 3500),
+            '```',
+          ].join('\n')
+        : ''
       const heroUser = [
         briefText(merchant, allImages.length),
         '',
@@ -653,6 +670,7 @@ export async function runGeneration(
           null,
           2,
         ),
+        heroRefBlock,
         '',
         `There are ${allImages.length} image(s) available as the \`images\` prop (array of URLs).`,
         'Output ONLY the Hero component code now.',
