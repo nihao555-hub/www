@@ -1,11 +1,12 @@
 'use client'
 
-import React, { useCallback, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { PromptInputBox } from '@/components/ui/prompt-input-box'
 import { THEMES } from '@/lib/ai/themes'
+import { AgentWorkflow } from './AgentWorkflow'
 
 const LANGUAGES: { code: string; label: string }[] = [
   { code: 'en', label: 'English' },
@@ -36,8 +37,6 @@ type DoneResult = {
   pages?: number
 }
 
-const STEP_ORDER = ['upload', 'parse', 'read', 'plan', 'inspire', 'write']
-
 export const GenerateForm: React.FC = () => {
   const [language, setLanguage] = useState('en')
   const [themeId, setThemeId] = useState('auto')
@@ -50,8 +49,6 @@ export const GenerateForm: React.FC = () => {
   const [inspiration, setInspiration] = useState<Inspiration | null>(null)
   const [logs, setLogs] = useState<string[]>([])
   const [result, setResult] = useState<DoneResult | null>(null)
-
-  const analysisRef = useRef<HTMLDivElement>(null)
 
   const themeOptions = useMemo(
     () => [
@@ -117,9 +114,6 @@ export const GenerateForm: React.FC = () => {
           upsertStep(payload as unknown as Step)
         } else if (event === 'analysis') {
           setAnalysis((prev) => prev + String(payload.delta ?? ''))
-          requestAnimationFrame(() => {
-            analysisRef.current?.scrollTo({ top: analysisRef.current.scrollHeight })
-          })
         } else if (event === 'theme') {
           setChosenTheme({ id: String(payload.id), name: String(payload.name) })
         } else if (event === 'inspiration') {
@@ -214,111 +208,22 @@ export const GenerateForm: React.FC = () => {
 
         {showWorkspace && (
           <>
-            {/* Steps */}
+            {/* Real-time agent workflow (ai-elements) */}
             <Card>
               <CardHeader>
-                <CardTitle>设计 Agent 实时状态</CardTitle>
+                <CardTitle>设计 Agent 实时工作流</CardTitle>
               </CardHeader>
               <CardContent>
-                <ol className="flex flex-col gap-2">
-                  {STEP_ORDER.map((key) => {
-                    const s = steps.find((x) => x.key === key)
-                    const status = s?.status
-                    return (
-                      <li key={key} className="flex items-center gap-3 text-sm">
-                        <span
-                          className={
-                            status === 'done'
-                              ? 'flex h-5 w-5 items-center justify-center rounded-full bg-green-500 text-white text-xs'
-                              : status === 'active'
-                                ? 'flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs animate-pulse'
-                                : 'flex h-5 w-5 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs'
-                          }
-                        >
-                          {status === 'done' ? '✓' : status === 'active' ? '●' : ''}
-                        </span>
-                        <span
-                          className={
-                            status ? 'text-foreground' : 'text-muted-foreground'
-                          }
-                        >
-                          {s?.label ?? defaultStepLabel(key)}
-                        </span>
-                      </li>
-                    )
-                  })}
-                </ol>
-
-                {chosenTheme && (
-                  <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-border bg-muted px-3 py-1 text-xs">
-                    <span className="font-medium">选定主题：</span>
-                    {chosenTheme.name}
-                  </div>
-                )}
+                <AgentWorkflow
+                  steps={steps}
+                  analysis={analysis}
+                  inspiration={inspiration}
+                  logs={logs}
+                  running={running}
+                  chosenTheme={chosenTheme}
+                />
               </CardContent>
             </Card>
-
-            {/* Analysis stream */}
-            {(analysis || running) && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>设计思路（实时）</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div
-                    ref={analysisRef}
-                    className="max-h-56 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted/50 p-4 text-sm leading-relaxed"
-                  >
-                    {analysis || '正在读图…'}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Inspiration */}
-            {inspiration && (inspiration.components.length > 0 || inspiration.icons.length > 0) && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>21st.dev 灵感与图标</CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-3">
-                  {inspiration.components.length > 0 && (
-                    <ul className="flex flex-col gap-1 text-sm">
-                      {inspiration.components.map((c, i) => (
-                        <li key={i}>
-                          <span className="font-medium">{c.name}</span>
-                          {c.summary ? (
-                            <span className="text-muted-foreground"> — {c.summary}</span>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {inspiration.icons.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-3">
-                      {inspiration.icons.map((ic, i) => (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          key={i}
-                          src={ic.svgUrl}
-                          alt={ic.title}
-                          title={ic.title}
-                          className="h-7 w-7"
-                        />
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            {logs.length > 0 && (
-              <div className="rounded-md bg-muted/40 p-3 font-mono text-xs text-muted-foreground">
-                {logs.map((l, i) => (
-                  <div key={i}>› {l}</div>
-                ))}
-              </div>
-            )}
 
             {/* Live preview */}
             {result && (
@@ -354,23 +259,4 @@ export const GenerateForm: React.FC = () => {
       </div>
     </div>
   )
-}
-
-function defaultStepLabel(key: string): string {
-  switch (key) {
-    case 'upload':
-      return '上传图片'
-    case 'parse':
-      return '理解你的需求'
-    case 'read':
-      return '读取商品图'
-    case 'plan':
-      return '规划版式与风格'
-    case 'inspire':
-      return '搜索 21st.dev 组件与图标'
-    case 'write':
-      return '撰写文案与组装版块'
-    default:
-      return key
-  }
 }
