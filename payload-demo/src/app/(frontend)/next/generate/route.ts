@@ -97,7 +97,34 @@ export async function POST(req: Request): Promise<Response> {
         send('step', { type: 'step', key: 'upload', label: 'Uploading images', status: 'done' })
 
         // 2) Run the AI design pipeline, streaming progress to the client.
-        const spec = await runGeneration(merchant, imageDataUrls, emit, req.signal)
+        const { spec, generatedImages } = await runGeneration(
+          merchant,
+          imageDataUrls,
+          emit,
+          req.signal,
+        )
+
+        // 2b) Store any AI-generated images in the media library, preserving the
+        // order the pipeline appended them (uploaded images first, then
+        // generated) so the spec's imageIndex values stay valid.
+        for (const gen of generatedImages) {
+          const match = /^data:([^;]+);base64,(.+)$/.exec(gen.dataUrl)
+          if (!match) continue
+          const mimetype = match[1] || 'image/png'
+          const buffer = Buffer.from(match[2], 'base64')
+          const ext = mimetype.split('/')[1] || 'png'
+          const mediaDoc = await payload.create({
+            collection: 'media',
+            data: { alt: gen.alt || `${merchant.name || 'Generated'} image` },
+            file: {
+              name: `ai-${gen.purpose}-${Date.now()}-${mediaIds.length}.${ext}`,
+              data: buffer,
+              mimetype,
+              size: buffer.byteLength,
+            },
+          })
+          mediaIds.push(mediaDoc.id)
+        }
 
         // 3) Persist the generated multi-page site.
         const site = await payload.create({

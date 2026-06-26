@@ -1,6 +1,11 @@
 import { ICON_KEYWORDS } from '@/components/AiSite/Icon'
 
 import { compileJsx } from './jsx-sandbox'
+import {
+  generateImage,
+  imageUrlToDataUrl,
+  isImageGenConfigured,
+} from './image-gen'
 import { extractJson, relayChat, relayChatStream, type ChatMessage } from './relay'
 import { normalizeSiteSpec, type SiteSpec } from './site-spec'
 import { THEMES, DEFAULT_THEME_ID, getTheme, themeCatalogForPrompt } from './themes'
@@ -61,6 +66,25 @@ export const LANGUAGES: { code: string; label: string }[] = [
 function languageLabel(code?: string): string {
   if (!code) return 'English'
   return LANGUAGES.find((l) => l.code === code)?.label || code
+}
+
+/** An AI-generated scene/decorative image, ready to be stored in Payload. */
+export type GeneratedImage = {
+  /** the generated image as a data URL (downloaded from the draw host) */
+  dataUrl: string
+  /** alt text describing the image */
+  alt: string
+  /** what role it plays on the site (hero background, section, decoration) */
+  purpose: string
+}
+
+/** Result of a full generation run. */
+export type GenerationResult = {
+  spec: SiteSpec
+  /** images the AI generated to fill gaps; the caller stores these in Payload
+   * media. They are appended (in order) AFTER the merchant's uploaded images,
+   * so the spec's imageIndex values line up with `uploaded ++ generated`. */
+  generatedImages: GeneratedImage[]
 }
 
 /** Events streamed to the client as the design agent works. */
@@ -229,6 +253,116 @@ async function splitBrief(merchant: MerchantInput): Promise<MerchantInput> {
   }
 }
 
+/** A single image the art-director agent decided the site needs. */
+type ImagePlanItem = { purpose: string; prompt: string; aspectRatio: string; alt: string }
+
+const VALID_ASPECTS = new Set(['1024x1024', '1536x1024', '1024x1536'])
+
+/**
+ * Ask the model to act as an art director and write `count` image-generation
+ * prompts tailored to the brand, theme palette and design family. Returns [] on
+ * any failure so the pipeline degrades gracefully.
+ */
+async function planImagePrompts(
+  merchant: MerchantInput,
+  theme: ReturnType<typeof getTheme>,
+  design: ReturnType<typeof getDesign>,
+  analysis: string,
+  count: number,
+  uploadedCount: number,
+): Promise<ImagePlanItem[]> {
+  if (count <= 0) return []
+  const palette = Object.values(theme.colors).join(', ')
+  const messages: ChatMessage[] = [
+    {
+      role: 'system',
+      content: `You are an art director choosing imagery for a brand website. Output ONLY a JSON array of exactly ${count} objects, each {"purpose": string, "prompt": string, "aspectRatio": string, "alt": string}.
+Rules:
+- "purpose" is one of: "hero" (full-bleed hero background), "section" (a product/feature/showcase photo), "decoration" (abstract texture/gradient/pattern backdrop).
+- The FIRST image must be purpose "hero" with aspectRatio "1536x1024".
+- "prompt" must be a vivid, specific, production-quality image prompt that matches the brand and these theme colors: ${palette}. Match the "${design.name}" design vibe (${design.description}).
+- Images must contain NO text, words, letters, numbers, logos, watermarks or UI.
+- "aspectRatio" must be one of "1024x1024", "1536x1024", "1024x1536".
+- "alt" is a short factual alt-text in plain English.
+- There are already ${uploadedCount} customer-uploaded image(s); generate complementary scene/decorative imagery, not duplicates.`,
+    },
+    {
+      role: 'user',
+      content: [
+        briefText(merchant, uploadedCount),
+        '',
+        `Theme: ${theme.name} (${theme.mood}). Design family: ${design.name}.`,
+        '',
+        'Design analysis for context:',
+        analysis.slice(0, 1500),
+      ].join('\n'),
+    },
+  ]
+  try {
+    const reply = await relayChat(messages)
+    const parsed = extractJson(reply)
+    if (!Array.isArray(parsed)) return []
+    const items: ImagePlanItem[] = []
+    for (const raw of parsed) {
+      if (!raw || typeof raw !== 'object') continue
+      const o = raw as Record<string, unknown>
+      const prompt = typeof o.prompt === 'string' ? o.prompt.trim() : ''
+      if (!prompt) continue
+      const aspectRatio =
+        typeof o.aspectRatio === 'string' && VALID_ASPECTS.has(o.aspectRatio)
+          ? o.aspectRatio
+          : '1024x1024'
+      items.push({
+        purpose: typeof o.purpose === 'string' ? o.purpose : 'section',
+        prompt,
+        aspectRatio,
+        alt: typeof o.alt === 'string' ? o.alt : prompt.slice(0, 80),
+      })
+    }
+    return items.slice(0, count)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Generate the planned images via gpt-image-2 (in parallel) and download each
+ * to a data URL. Failed generations are skipped. Returns the images in plan
+ * order so the caller can append them to the uploaded set deterministically.
+ */
+async function generateSiteImages(
+  plan: ImagePlanItem[],
+  emit: EmitFn,
+  signal?: AbortSignal,
+): Promise<GeneratedImage[]> {
+  const results = await Promise.allSettled(
+    plan.map(async (item) => {
+      const url = await generateImage({
+        prompt: item.prompt,
+        aspectRatio: item.aspectRatio,
+        signal,
+      })
+      const dataUrl = await imageUrlToDataUrl(url)
+      return { dataUrl, alt: item.alt, purpose: item.purpose } satisfies GeneratedImage
+    }),
+  )
+  const out: GeneratedImage[] = []
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled') {
+      out.push(r.value)
+      emit({ type: 'log', message: `Generated ${plan[i].purpose} image (${plan[i].aspectRatio})` })
+    } else {
+      emit({
+        type: 'log',
+        message: `Image generation failed for ${plan[i].purpose}: ${
+          r.reason instanceof Error ? r.reason.message : 'error'
+        }`,
+      })
+    }
+  })
+  return out
+}
+
 function imageParts(imageDataUrls: string[]): Exclude<ChatMessage['content'], string> {
   return imageDataUrls.map((url) => ({ type: 'image_url', image_url: { url } }) as const)
 }
@@ -257,7 +391,7 @@ export async function runGeneration(
   imageDataUrls: string[],
   emit: EmitFn,
   signal?: AbortSignal,
-): Promise<SiteSpec> {
+): Promise<GenerationResult> {
   const lang = languageLabel(merchant.language)
   const catalog = themeCatalogForPrompt()
   const validIds = THEMES.map((t) => t.id)
@@ -370,6 +504,61 @@ export async function runGeneration(
     status: 'done',
   })
 
+  // ---- Phase 2.5: generate missing scene/decorative images via gpt-image-2 -
+  // `allImages` = uploaded images followed by AI-generated ones, so the spec
+  // writer's imageIndex values stay valid across the combined set.
+  const allImages = [...imageDataUrls]
+  const generatedImages: GeneratedImage[] = []
+  // Aim for a small library of imagery so every site has a hero backdrop and a
+  // few section/decoration shots even when the customer uploads little or
+  // nothing. Cap generation so a run stays within the request budget.
+  const TARGET_IMAGE_TOTAL = 4
+  const needed = Math.min(3, Math.max(0, TARGET_IMAGE_TOTAL - imageDataUrls.length))
+  if (needed > 0 && isImageGenConfigured()) {
+    emit({
+      type: 'step',
+      key: 'image',
+      label: 'Generating scene & decorative images (gpt-image-2)',
+      status: 'active',
+    })
+    emit({
+      type: 'log',
+      message: `Only ${imageDataUrls.length} image(s) uploaded; generating ${needed} more with gpt-image-2…`,
+    })
+    try {
+      const plan = await planImagePrompts(
+        merchant,
+        theme,
+        design,
+        analysis,
+        needed,
+        imageDataUrls.length,
+      )
+      const made = await generateSiteImages(plan, emit, signal)
+      for (const img of made) {
+        generatedImages.push(img)
+        allImages.push(img.dataUrl)
+      }
+      emit({
+        type: 'log',
+        message: `Added ${made.length} AI-generated image(s); ${allImages.length} image(s) available total`,
+      })
+    } catch (err) {
+      emit({
+        type: 'log',
+        message: `Image generation skipped (${
+          err instanceof Error ? err.message : 'error'
+        })`,
+      })
+    }
+    emit({
+      type: 'step',
+      key: 'image',
+      label: 'Generating scene & decorative images (gpt-image-2)',
+      status: 'done',
+    })
+  }
+
   // ---- Phase 3: write the final structured site spec ---------------------
   emit({ type: 'step', key: 'write', label: 'Writing copy & assembling sections', status: 'active' })
 
@@ -386,7 +575,7 @@ export async function runGeneration(
     .replace('{BLUEPRINT}', templateBlueprintForPrompt(template))
     .replace('{ICONS}', ICON_KEYWORDS.join(', '))
     .replaceAll('{LANGUAGE}', lang)
-    .replaceAll('{IMAGE_COUNT}', String(imageDataUrls.length))
+    .replaceAll('{IMAGE_COUNT}', String(allImages.length))
   const specMessages: ChatMessage[] = [
     { role: 'system', content: specSystem },
     {
@@ -395,7 +584,7 @@ export async function runGeneration(
         {
           type: 'text',
           text: [
-            briefText(merchant, imageDataUrls.length),
+            briefText(merchant, allImages.length),
             '',
             `Chosen theme id: ${theme.id} (${theme.name})`,
             '',
@@ -407,7 +596,7 @@ export async function runGeneration(
             `Now output the final SiteSpec JSON only. Use themeId "${theme.id}". All copy in ${lang}.`,
           ].join('\n'),
         },
-        ...imageParts(imageDataUrls),
+        ...imageParts(allImages),
       ],
     },
   ]
@@ -448,7 +637,7 @@ export async function runGeneration(
     const homeHero = spec.pages[0]?.hero
     if (homeHero) {
       const heroUser = [
-        briefText(merchant, imageDataUrls.length),
+        briefText(merchant, allImages.length),
         '',
         `Theme tokens (use via theme.colors.*): ${JSON.stringify(theme.colors)}`,
         `Design family vibe: ${design.name} — ${design.description}`,
@@ -465,7 +654,7 @@ export async function runGeneration(
           2,
         ),
         '',
-        `There are ${imageDataUrls.length} image(s) available as the \`images\` prop (array of URLs).`,
+        `There are ${allImages.length} image(s) available as the \`images\` prop (array of URLs).`,
         'Output ONLY the Hero component code now.',
       ].join('\n')
       const heroReply = await relayChat([
@@ -493,7 +682,7 @@ export async function runGeneration(
   emit({ type: 'step', key: 'jsx', label: 'Coding a bespoke hero (live JSX)', status: 'done' })
 
   emit({ type: 'spec', spec })
-  return spec
+  return { spec, generatedImages }
 }
 
 /**
@@ -504,5 +693,6 @@ export async function generateSiteSpec(
   merchant: MerchantInput,
   imageDataUrls: string[],
 ): Promise<SiteSpec> {
-  return runGeneration(merchant, imageDataUrls, () => {})
+  const { spec } = await runGeneration(merchant, imageDataUrls, () => {})
+  return spec
 }
