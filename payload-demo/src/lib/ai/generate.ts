@@ -4,6 +4,13 @@ import { extractJson, relayChat, relayChatStream, type ChatMessage } from './rel
 import { normalizeSiteSpec, type SiteSpec } from './site-spec'
 import { THEMES, DEFAULT_THEME_ID, getTheme, themeCatalogForPrompt } from './themes'
 import {
+  DESIGNS,
+  DEFAULT_DESIGN_ID,
+  getDesign,
+  designCatalogForPrompt,
+  pickDesignFromAnalysis,
+} from './design-systems'
+import {
   TEMPLATES,
   DEFAULT_TEMPLATE_ID,
   getTemplate,
@@ -32,6 +39,8 @@ export type MerchantInput = {
   themeId?: string
   /** optional template/archetype id to force; when omitted the AI chooses one */
   templateId?: string
+  /** optional design family id to force; when omitted the AI chooses one */
+  designId?: string
 }
 
 /** Human label for each supported generation language. */
@@ -70,7 +79,8 @@ You are shown a merchant's product photos and a short brief. Think out loud, bri
 2. What visual direction fits (mood, palette, typography feel) — it must feel trustworthy, premium and modern, NOT a generic template.
 3. Pick exactly ONE theme id from the catalog below that best matches the brand.
 4. Pick exactly ONE template archetype id from the template library below — this is the proven page/section blueprint you will start from instead of designing from scratch.
-5. Following the chosen template's blueprint, plan the pages and for each list the sections you will build (use rich sections: features-with-icons, stats, product showcase, gallery, process steps, FAQ, strong CTA, contact details).
+5. Pick exactly ONE design family id from the design library below — this is the visual LAYOUT DNA (hero composition, feature/stat layout, spacing, decoration). Choose the family whose vibe fits the brand so this site does NOT look like a generic template; vary it by industry/mood.
+6. Following the chosen template's blueprint, plan the pages and for each list the sections you will build (use rich sections: features-with-icons, stats, product showcase, gallery, process steps, FAQ, strong CTA, contact details).
 
 Theme catalog (id (mood): when to use):
 {CATALOG}
@@ -78,9 +88,13 @@ Theme catalog (id (mood): when to use):
 Template library (id: name — when to use):
 {TEMPLATES}
 
-Keep it concise (a short paragraph + a per-page bullet plan). End with TWO lines exactly like:
+Design family library (id: name — when to use):
+{DESIGNS}
+
+Keep it concise (a short paragraph + a per-page bullet plan). End with THREE lines exactly like:
 THEME: <theme-id>
 TEMPLATE: <template-id>
+DESIGN: <design-id>
 Write your analysis in {LANGUAGE}.`
 
 const SPEC_SYSTEM = `You are an expert web designer and B2B brand copywriter. Output the final site as a SINGLE JSON object — no markdown, no commentary — matching this TypeScript type:
@@ -238,6 +252,7 @@ export async function runGeneration(
 
   const analysisSystem = ANALYSIS_SYSTEM.replace('{CATALOG}', catalog)
     .replace('{TEMPLATES}', templateCatalogForPrompt())
+    .replace('{DESIGNS}', designCatalogForPrompt())
     .replace('{LANGUAGE}', lang)
   const analysisMessages: ChatMessage[] = [
     { role: 'system', content: analysisSystem },
@@ -268,6 +283,10 @@ export async function runGeneration(
   emit({ type: 'template', id: template.id, name: template.name })
   emit({ type: 'log', message: `Starting from template: ${template.name}` })
   emit({ type: 'log', message: `Selected theme: ${theme.name} (${theme.mood})` })
+  const chosenDesign =
+    merchant.designId || pickDesignFromAnalysis(analysis) || DEFAULT_DESIGN_ID
+  const design = getDesign(chosenDesign)
+  emit({ type: 'log', message: `Selected design family: ${design.name} (${design.id})` })
   emit({ type: 'step', key: 'plan', label: 'Planning layout & style', status: 'done' })
 
   // ---- Phase 2: 21st.dev Magic MCP — multi-round component + icon search --
@@ -370,11 +389,21 @@ export async function runGeneration(
 
   const reply = await relayChat(specMessages)
   const raw = extractJson(reply)
-  const spec = normalizeSiteSpec(raw, merchant.name || 'New Site', validIds, theme.id)
+  const validDesignIds = DESIGNS.map((d) => d.id)
+  const spec = normalizeSiteSpec(
+    raw,
+    merchant.name || 'New Site',
+    validIds,
+    theme.id,
+    validDesignIds,
+    design.id,
+  )
   // The analysis-selected theme wins if the spec omitted/changed it unexpectedly.
   if (!merchant.themeId && pickThemeFromAnalysis(analysis)) {
     spec.themeId = theme.id
   }
+  // The analysis-selected design family is authoritative.
+  spec.designId = design.id
   // Surface the real 21st.dev icons as a brand/trust strip on the rendered site.
   if (icons.length) {
     spec.brandIcons = icons
