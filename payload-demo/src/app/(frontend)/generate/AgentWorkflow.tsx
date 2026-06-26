@@ -120,6 +120,35 @@ function cotStatus(state: StepState): 'complete' | 'active' | 'pending' {
   return 'pending'
 }
 
+/**
+ * Route a raw progress log line to the chain step it belongs under, so each
+ * step shows its own detail instead of dumping everything into one raw block.
+ */
+function logStepKey(log: string): StepKey | null {
+  const l = log.toLowerCase().trim()
+  if (l.startsWith('brand:') || l.startsWith('industry:')) return 'parse'
+  if (l.includes('analyzing') && l.includes('image')) return 'read'
+  if (
+    l.startsWith('starting from template') ||
+    l.startsWith('selected theme') ||
+    l.startsWith('selected design family')
+  )
+    return 'plan'
+  if (l.startsWith('mcp server tools') || (l.startsWith('made ') && l.includes('mcp tool call')))
+    return 'inspire'
+  if (l.startsWith('live jsx hero')) return 'jsx'
+  if (l.startsWith('live jsx') || l.startsWith('signature standout') || l.startsWith('authored '))
+    return 'sections'
+  if (
+    l.startsWith('batch-generating') ||
+    l.startsWith('generated ') ||
+    (l.startsWith('added ') && l.includes('image'))
+  )
+    return 'image'
+  if (l.startsWith('polishing') || l.startsWith('self-polish')) return 'polish'
+  return null
+}
+
 export const AgentWorkflow: React.FC<{
   steps: WorkflowStep[]
   analysis: string
@@ -164,6 +193,16 @@ export const AgentWorkflow: React.FC<{
   const analysisStreaming = running && stateOf('write') !== 'done' && analysis.length > 0
   const planStreaming = running && stateOf('inspire') === 'pending' && plan.length > 0
 
+  // Bucket each progress log under the step it belongs to. Anything that does
+  // not map cleanly is attached to the currently-active step so nothing is lost.
+  const activeKey = [...revealed].reverse().find((k) => stateOf(k) === 'active') ?? revealed.at(-1)
+  const logBuckets: Partial<Record<StepKey, string[]>> = {}
+  for (const line of logs) {
+    const key = (logStepKey(line) ?? activeKey) as StepKey | undefined
+    if (!key) continue
+    ;(logBuckets[key] ??= []).push(line)
+  }
+
   return (
     <ChainOfThought className="max-w-none" defaultOpen>
       <ChainOfThoughtHeader>
@@ -188,6 +227,7 @@ export const AgentWorkflow: React.FC<{
           // The "inspire" step nests the live 21st.dev MCP tool calls.
           const showMcp =
             key === 'inspire' && (mcpCalls.length > 0 || mcpToolNames.length > 0 || hasInspiration)
+          const stepLogs = logBuckets[key] ?? []
 
           return (
             <motion.div
@@ -327,21 +367,28 @@ export const AgentWorkflow: React.FC<{
                   )}
                 </div>
               )}
+
+              {stepLogs.length > 0 && (
+                <ul className="space-y-1 border-l border-border/60 pl-3">
+                  {stepLogs.map((l, i) => (
+                    <motion.li
+                      key={`${key}-log-${i}`}
+                      initial={{ opacity: 0, x: -4 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="text-xs leading-relaxed text-muted-foreground"
+                    >
+                      {l}
+                    </motion.li>
+                  ))}
+                </ul>
+              )}
             </ChainOfThoughtStep>
             </motion.div>
           )
         })}
         </AnimatePresence>
       </ChainOfThoughtContent>
-
-      {/* Raw log stream */}
-      {logs.length > 0 && (
-        <div className="rounded-md bg-muted/40 p-3 font-mono text-xs text-muted-foreground">
-          {logs.map((l, i) => (
-            <div key={i}>› {l}</div>
-          ))}
-        </div>
-      )}
     </ChainOfThought>
   )
 }
