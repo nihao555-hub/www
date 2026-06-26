@@ -38,6 +38,7 @@ type McpCall = {
   componentName?: string
   similarity?: number
   codePreview?: string
+  featured?: boolean
 }
 type DoneResult = {
   pageId: number

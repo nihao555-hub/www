@@ -7,7 +7,7 @@ import {
   isImageGenConfigured,
 } from './image-gen'
 import { extractJson, relayChat, relayChatStream, type ChatMessage } from './relay'
-import { normalizeSiteSpec, type SiteSpec } from './site-spec'
+import { normalizeSiteSpec, type SiteSpec, type SpecSection } from './site-spec'
 import { THEMES, DEFAULT_THEME_ID, getTheme, themeCatalogForPrompt } from './themes'
 import {
   DESIGNS,
@@ -190,6 +190,7 @@ Output rules (CRITICAL):
 - USE THE PROPS for all copy: render {headline}, {subheadline}, map {badges} and {ctas} (each cta = { label, url } -> an <a href={cta.url}>). Never hardcode placeholder/lorem text.
 - If images?.length, use images[0] as a hero image or background (e.g. <img src={images[0]} .../> or backgroundImage). Always guard with optional chaining.
 - Make it full-bleed (w-full), high-contrast, responsive, with generous spacing and a clear primary CTA button using theme.colors.primary / primaryForeground. Subtle motion is welcome but keep it tasteful and not blocking.
+- LAYOUT SAFETY (CRITICAL — copy may be CJK/Chinese with no spaces, so a narrow text column collapses into an unreadable one-character-per-line vertical strip): for any text-beside-image split use a responsive grid with EXPLICIT fractions where the text side is at least half the width (stacked on mobile), give text children \`min-w-0\` and the text column \`min-w-[18rem]\`, never let the image column squeeze the text, use \`break-words\` (not \`break-all\`), and never use \`writing-mode\`/vertical-text/rotation on headings.
 - The component must render without runtime errors for any subset of props.
 - If a "REFERENCE COMPONENT" (real code pulled live from 21st.dev) is provided, treat it as the design blueprint: adapt its layout, composition, visual rhythm, decorative details and motion into your Hero. Strip its imports/exports/TypeScript, swap its hardcoded copy for the {headline}/{subheadline}/{badges}/{ctas} props, and recolor it with the theme tokens. Do not copy it verbatim — re-express the same structure cleanly within the constraints above.
 
@@ -212,6 +213,7 @@ Output rules (CRITICAL):
 - The section is rendered inside the page flow, so use a <section> wrapper with generous vertical padding (e.g. py-16 md:py-24) and a centered max-w container. Do NOT make it full-screen.
 - If images?.length, you may use them for cards/showcase/decoration; always guard with optional chaining and only reference indexes that exist.
 - The component must render without runtime errors for any subset of props.
+- LAYOUT SAFETY (CRITICAL — the copy may be CJK/Chinese, which has no spaces and breaks per-character, so a too-narrow text column collapses into an unreadable one-character-per-line vertical strip): NEVER let a text column become narrow. For any two-column / text-beside-image layout use a responsive grid with EXPLICIT fractions where the text side is at least half the width (e.g. \`grid md:grid-cols-2\` or \`md:grid-cols-[1.1fr_0.9fr]\`, stacked to one column on mobile), give every flex/grid text child \`min-w-0\` and the text column a sane \`min-w-[18rem]\` (or \`basis-1/2\`), and NEVER give an image/decoration column a fixed or grow width that squeezes the text. Headings and paragraphs must use \`break-words\` (not \`break-all\`) and must NOT use \`writing-mode\`, \`[writing-mode:vertical-*]\`, rotation, or any vertical-text styling. If unsure, prefer a single full-width centered column over a cramped split.
 - A "REFERENCE COMPONENT" (real code pulled live from 21st.dev) is the design blueprint: adapt its layout, composition, visual rhythm, decorative details and motion into THIS section. Strip its imports/exports/TypeScript and recolor it with the theme tokens. Re-express its structure cleanly — do not copy it verbatim and do not keep its placeholder copy.
 
 Return the raw component code now.`
@@ -741,6 +743,23 @@ export async function runGeneration(
     }
     const MAX_SECTIONS = 6
     let authored = 0
+    // The agent always pulls one distinctive, popular "signature" standout
+    // component (animated bento / aurora bg / marquee / spotlight / 3D tilt …).
+    // It maps to no fixed section kind, so capture it now and inject it as an
+    // extra bespoke band on the home page after the main loop — this is the
+    // site's "wow" moment that lifts it above a generic template.
+    const featuredRef = refs.find((r) => r.featured)
+    const homePage = spec.pages.find((p) => p.path === '') ?? spec.pages[0]
+    // Reuse real, language-correct copy from an existing rich home section so the
+    // signature band never invents (possibly wrong-language) text.
+    const signatureCopy: SpecSection | null = (() => {
+      if (!featuredRef || !homePage) return null
+      const donor =
+        homePage.sections.find((s) => s.kind === 'features' && s.items?.length >= 3) ??
+        homePage.sections.find((s) => s.kind === 'stats' && s.items?.length >= 3) ??
+        homePage.sections.find((s) => s.kind === 'features' || s.kind === 'stats')
+      return donor ?? null
+    })()
     for (const page of spec.pages) {
       for (let i = 0; i < page.sections.length; i++) {
         if (authored >= MAX_SECTIONS) break
@@ -807,7 +826,75 @@ export async function runGeneration(
       }
       if (authored >= MAX_SECTIONS) break
     }
-    emit({ type: 'log', message: `Authored ${authored} bespoke section(s) from 21st.dev blueprints` })
+
+    // ---- Signature band: render the distinctive standout component ----------
+    let signatureAuthored = false
+    if (featuredRef && signatureCopy && homePage) {
+      const refBlock = [
+        '',
+        `REFERENCE COMPONENT — a distinctive, popular "${featuredRef.componentName}" standout pulled live from 21st.dev via MCP${
+          typeof featuredRef.similarity === 'number' ? ` (match ${featuredRef.similarity.toFixed(2)})` : ''
+        }. This is the SIGNATURE / wow component — preserve its animation, interactivity and visual flair (see system rules):`,
+        '```tsx',
+        (featuredRef.demoCode || featuredRef.code).slice(0, 3500),
+        '```',
+      ].join('\n')
+      const signatureUser = [
+        `This is a SIGNATURE showcase band for a ${
+          merchant.industry || merchant.name || 'business'
+        } website — the visual highlight of the page.`,
+        '',
+        `Theme tokens (use via theme.colors.*): ${JSON.stringify(theme.colors)}`,
+        `Design family vibe: ${design.name} — ${design.description}`,
+        '',
+        'Section copy to render (already written in the target language — bake it in verbatim, do not translate or invent new copy):',
+        JSON.stringify(signatureCopy, null, 2),
+        refBlock,
+        '',
+        `There are ${allImages.length} image(s) available as the \`images\` prop (array of URLs).`,
+        'Faithfully reproduce the reference component\'s motion/interaction. Output ONLY the Section component code now.',
+      ].join('\n')
+      try {
+        const reply = await relayChat([
+          { role: 'system', content: SECTION_JSX_SYSTEM },
+          { role: 'user', content: signatureUser },
+        ])
+        const sigCode = stripCodeFence(reply)
+        if (compileJsx(sigCode)) {
+          const heroIdx = homePage.hero ? 1 : 0
+          const insertAt = Math.min(heroIdx, homePage.sections.length)
+          homePage.sections.splice(insertAt, 0, {
+            kind: 'jsx',
+            code: sigCode,
+            source: `21st-signature:${featuredRef.componentName}`,
+          })
+          signatureAuthored = true
+          emit({
+            type: 'log',
+            message: `Signature standout "${featuredRef.componentName}" compiled OK — injected as the home page's wow band`,
+          })
+        } else {
+          emit({
+            type: 'log',
+            message: `Signature standout "${featuredRef.componentName}" invalid; skipping wow band`,
+          })
+        }
+      } catch (err) {
+        emit({
+          type: 'log',
+          message: `Signature standout failed (${
+            err instanceof Error ? err.message : 'error'
+          }); skipping wow band`,
+        })
+      }
+    }
+
+    emit({
+      type: 'log',
+      message: `Authored ${authored} bespoke section(s) from 21st.dev blueprints${
+        signatureAuthored ? ' + 1 signature standout component' : ''
+      }`,
+    })
   } catch (err) {
     emit({
       type: 'log',
