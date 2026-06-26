@@ -65,7 +65,8 @@ export const AgentWorkflow: React.FC<{
   logs: string[]
   running: boolean
   chosenTheme: { id: string; name: string } | null
-}> = ({ steps, analysis, inspiration, logs, running, chosenTheme }) => {
+  chosenTemplate: { id: string; name: string } | null
+}> = ({ steps, analysis, inspiration, logs, running, chosenTheme, chosenTemplate }) => {
   const stateOf = (key: string): StepState => {
     const s = steps.find((x) => x.key === key)
     return (s?.status as StepState) ?? 'pending'
@@ -113,6 +114,12 @@ export const AgentWorkflow: React.FC<{
               </TaskItem>
             )
           })}
+          {chosenTemplate && (
+            <TaskItem className="flex items-center gap-2 pt-1">
+              <span className="text-muted-foreground">选定模板</span>
+              <TaskItemFile>{chosenTemplate.name}</TaskItemFile>
+            </TaskItem>
+          )}
           {chosenTheme && (
             <TaskItem className="flex items-center gap-2 pt-1">
               <span className="text-muted-foreground">选定主题</span>
