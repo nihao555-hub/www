@@ -8,6 +8,7 @@ import {
 } from './image-gen'
 import { extractJson, relayChat, relayChatStream, type ChatMessage } from './relay'
 import { normalizeSiteSpec, type SiteSpec, type SpecSection } from './site-spec'
+import { AGENT_ROLE, TASTE_SKILL_GUIDE, TASTE_SKILL_JSX_RULES } from './taste-skill'
 import { THEMES, DEFAULT_THEME_ID, getTheme, themeCatalogForPrompt } from './themes'
 import {
   DESIGNS,
@@ -92,13 +93,16 @@ export type GenEvent =
   | { type: 'step'; key: string; label: string; status: 'active' | 'done' }
   | { type: 'log'; message: string }
   | { type: 'analysis'; delta: string }
+  | { type: 'plan'; delta: string }
   | { type: 'theme'; id: string; name: string; reason?: string }
   | { type: 'template'; id: string; name: string }
   | { type: 'inspiration'; components: ComponentInspiration[]; icons: IconResult[] }
   | { type: 'mcp'; toolNames: string[]; calls: McpToolCall[] }
   | { type: 'spec'; spec: SiteSpec }
 
-const ANALYSIS_SYSTEM = `You are a senior brand & web designer working at the level of v0 / Lovable, specialized in professional B2B independent commerce websites (the kind a sales/export team sends to overseas buyers).
+const ANALYSIS_SYSTEM = `${AGENT_ROLE}
+
+You are a senior brand & web designer working at the level of v0 / Lovable, specialized in professional B2B independent commerce websites (the kind a sales/export team sends to overseas buyers).
 You are shown a merchant's product photos and a short brief. Think out loud, briefly, like a designer planning a MULTI-PAGE site:
 1. What does this brand sell, who is the B2B audience, what is the industry?
 2. What visual direction fits (mood, palette, typography feel) — it must feel trustworthy, premium and modern, NOT a generic template.
@@ -120,7 +124,9 @@ Keep it concise (a short paragraph + a per-page bullet plan). End with THREE lin
 THEME: <theme-id>
 TEMPLATE: <template-id>
 DESIGN: <design-id>
-Write your analysis in {LANGUAGE}.`
+Write your analysis in {LANGUAGE}.
+
+${TASTE_SKILL_GUIDE}`
 
 const SPEC_SYSTEM = `You are an expert web designer and B2B brand copywriter. Output the final site as a SINGLE JSON object — no markdown, no commentary — matching this TypeScript type:
 
@@ -179,7 +185,9 @@ Rules:
 // Route 2 — ask the model to author a real, self-contained JSX hero that we
 // compile and render live (v0/lovable style), instead of only filling a fixed
 // template. Output is raw JSX, no imports/exports needed.
-const HERO_JSX_SYSTEM = `You are a senior front-end engineer + designer (v0 / Lovable level). Write ONE self-contained React function component for a website HERO section. This code is compiled and rendered LIVE, so it must be correct, safe, and visually striking.
+const HERO_JSX_SYSTEM = `${AGENT_ROLE}
+
+Write ONE self-contained React function component for a website HERO section. This code is compiled and rendered LIVE, so it must be correct, safe, and visually striking.
 
 Output rules (CRITICAL):
 - Output ONLY the component code. No markdown fences, no prose, no imports, no exports.
@@ -192,7 +200,9 @@ Output rules (CRITICAL):
 - Make it full-bleed (w-full), high-contrast, responsive, with generous spacing and a clear primary CTA button using theme.colors.primary / primaryForeground. Subtle motion is welcome but keep it tasteful and not blocking.
 - LAYOUT SAFETY (CRITICAL — copy may be CJK/Chinese with no spaces, so a narrow text column collapses into an unreadable one-character-per-line vertical strip): for any text-beside-image split use a responsive grid with EXPLICIT fractions where the text side is at least half the width (stacked on mobile), give text children \`min-w-0\` and the text column \`min-w-[18rem]\`, never let the image column squeeze the text, use \`break-words\` (not \`break-all\`), and never use \`writing-mode\`/vertical-text/rotation on headings.
 - The component must render without runtime errors for any subset of props.
-- If a "REFERENCE COMPONENT" (real code pulled live from 21st.dev) is provided, treat it as the design blueprint: adapt its layout, composition, visual rhythm, decorative details and motion into your Hero. Strip its imports/exports/TypeScript, swap its hardcoded copy for the {headline}/{subheadline}/{badges}/{ctas} props, and recolor it with the theme tokens. Do not copy it verbatim — re-express the same structure cleanly within the constraints above.
+- If a "REFERENCE COMPONENT" (real code pulled live from 21st.dev) is provided, treat it as the design blueprint: adapt its layout, composition, visual rhythm, decorative details and motion into your Hero. Strip its imports/exports/TypeScript, swap its hardcoded copy for the {headline}/{subheadline}/{badges}/{ctas} props, and recolor it with the theme tokens. Do not copy it verbatim - re-express the same structure cleanly within the constraints above.
+
+${TASTE_SKILL_JSX_RULES}
 
 Return the raw component code now.`
 
@@ -201,7 +211,9 @@ Return the raw component code now.`
 // 21st.dev component pulled for that section actually shapes the final design,
 // not just the hero. Copy is baked into the JSX verbatim (already written in the
 // target language) so the only runtime scope needed is { theme, images }.
-const SECTION_JSX_SYSTEM = `You are a senior front-end engineer + designer (v0 / Lovable level). Write ONE self-contained React function component for a single website SECTION (NOT the hero). This code is compiled and rendered LIVE, so it must be correct, safe, and visually striking.
+const SECTION_JSX_SYSTEM = `${AGENT_ROLE}
+
+Write ONE self-contained React function component for a single website SECTION (NOT the hero). This code is compiled and rendered LIVE, so it must be correct, safe, and visually striking.
 
 Output rules (CRITICAL):
 - Output ONLY the component code. No markdown fences, no prose, no imports, no exports.
@@ -214,9 +226,46 @@ Output rules (CRITICAL):
 - If images?.length, you may use them for cards/showcase/decoration; always guard with optional chaining and only reference indexes that exist.
 - The component must render without runtime errors for any subset of props.
 - LAYOUT SAFETY (CRITICAL — the copy may be CJK/Chinese, which has no spaces and breaks per-character, so a too-narrow text column collapses into an unreadable one-character-per-line vertical strip): NEVER let a text column become narrow. For any two-column / text-beside-image layout use a responsive grid with EXPLICIT fractions where the text side is at least half the width (e.g. \`grid md:grid-cols-2\` or \`md:grid-cols-[1.1fr_0.9fr]\`, stacked to one column on mobile), give every flex/grid text child \`min-w-0\` and the text column a sane \`min-w-[18rem]\` (or \`basis-1/2\`), and NEVER give an image/decoration column a fixed or grow width that squeezes the text. Headings and paragraphs must use \`break-words\` (not \`break-all\`) and must NOT use \`writing-mode\`, \`[writing-mode:vertical-*]\`, rotation, or any vertical-text styling. If unsure, prefer a single full-width centered column over a cramped split.
-- A "REFERENCE COMPONENT" (real code pulled live from 21st.dev) is the design blueprint: adapt its layout, composition, visual rhythm, decorative details and motion into THIS section. Strip its imports/exports/TypeScript and recolor it with the theme tokens. Re-express its structure cleanly — do not copy it verbatim and do not keep its placeholder copy.
+- A "REFERENCE COMPONENT" (real code pulled live from 21st.dev) is the design blueprint: adapt its layout, composition, visual rhythm, decorative details and motion into THIS section. Strip its imports/exports/TypeScript and recolor it with the theme tokens. Re-express its structure cleanly - do not copy it verbatim and do not keep its placeholder copy.
+
+${TASTE_SKILL_JSX_RULES}
 
 Return the raw component code now.`
+
+const PLAN_SYSTEM = `${AGENT_ROLE}
+
+You are the lead design agent for an AI independent-site builder, working PLAN-FIRST: like a senior designer, you decide your approach before building anything. You have already studied the merchant's photos and brief.
+Output a SHORT, concrete BUILD PLAN for THIS specific site as a numbered list (5-8 lines, no preamble, no closing remarks):
+1. Design Read — one line: page kind, audience, vibe + the aesthetic family you'll commit to.
+2. Dials — state DESIGN_VARIANCE, MOTION_INTENSITY and VISUAL_DENSITY with the values (1-10) you choose and why, in a few words.
+3. Sections — which sections you'll build and in what order (you are free, not bound to a fixed template; innovate where it helps).
+4. 21st.dev — which sections you'll pull real components for, and the ONE distinctive "signature" standout (animated bento / aurora / marquee / spotlight / 3D tilt / scroll reveal / animated counter …) that becomes the site's wow moment.
+5. Imagery — what scene/decorative images you'll batch-generate at the very end.
+Be specific to THIS brand, never generic. Keep each line tight. Write the plan in {LANGUAGE}.
+
+${TASTE_SKILL_GUIDE}`
+
+const POLISH_SYSTEM = `${AGENT_ROLE}
+
+You are doing a FINAL QA POLISH pass on a single live-rendered React component (it is compiled and rendered live in a sandbox). Audit it for REAL defects and fix them; if it is already good, return it unchanged.
+
+OUTPUT RULES (strict):
+- Output ONLY the component code. No markdown fences, no prose, no imports, no exports, no TypeScript annotations.
+- Keep the EXACT same function name and signature as the input (e.g. \`function Hero({ ... })\` or \`function Section({ theme, images })\`). Do not rename it or change its props.
+- Plain JSX only. You may use the same in-scope identifiers already available: React hooks, \`motion\`, \`AnimatePresence\`, lucide-react icons, and \`cn()\`. Do not introduce new imports.
+- Keep ALL provided copy verbatim. Do NOT translate, rewrite, shorten or invent copy, and do NOT change the language.
+
+FIX THESE DEFECTS IF PRESENT (and ONLY these — do not redesign):
+1. CJK/Chinese text collapsing into a narrow one-character-per-line vertical strip. Widen the text column: responsive grid with the text side at least half width, \`min-w-0\` on flex/grid text children, \`min-w-[18rem]\` (or \`basis-1/2\`) on the text column, \`break-words\` (never \`break-all\`), and NEVER \`writing-mode\`/vertical-text/rotation. Prefer a single full-width column over a cramped split.
+2. Content overflow, clipping, squished/deformed layout, or elements escaping their container (add \`max-w-full\`, \`min-w-0\`, \`object-cover\`, centered \`max-w-6xl mx-auto px-*\` wrapper; never wider than the viewport).
+3. OVERLAPPING elements — text/buttons/images sitting on top of each other or under a decorative layer. Fix by laying content out in normal flow (flex/grid with \`gap-*\`), wrapping real content in \`relative z-10\`, and demoting every decorative \`absolute\` blob/glow to \`pointer-events-none\` inside a \`relative overflow-hidden\` parent with a lower z-index. Remove negative margins / translations that cause collisions.
+4. Low-contrast text or buttons — ensure foreground/background meet WCAG AA against the theme tokens.
+5. Any em-dash or en-dash that is visible to the user — replace with a regular hyphen or restructure the sentence.
+6. Broken or empty image references.
+
+${TASTE_SKILL_JSX_RULES}
+
+Return the corrected component code now (or the original code unchanged if nothing needs fixing).`
 
 function stripCodeFence(s: string): string {
   const t = s.trim()
@@ -470,6 +519,37 @@ export async function runGeneration(
     merchant.designId || pickDesignFromAnalysis(analysis) || DEFAULT_DESIGN_ID
   const design = getDesign(chosenDesign)
   emit({ type: 'log', message: `Selected design family: ${design.name} (${design.id})` })
+
+  // Plan-first: the agent commits to a concrete, brand-specific build plan
+  // (design read + the three dials + section order + signature + imagery)
+  // BEFORE it pulls any components or writes any code, and streams it live.
+  let buildPlan = ''
+  try {
+    buildPlan = await relayChatStream(
+      [
+        { role: 'system', content: PLAN_SYSTEM.replaceAll('{LANGUAGE}', lang) },
+        {
+          role: 'user',
+          content: [
+            briefText(merchant, imageDataUrls.length),
+            '',
+            `Chosen theme: ${theme.name} (${theme.id}) — ${theme.mood}`,
+            `Chosen design family: ${design.name} — ${design.description}`,
+            `Starting template archetype: ${template.name} (${template.id})`,
+            '',
+            'Your earlier design analysis:',
+            analysis.slice(0, 1600),
+            '',
+            `Now output the BUILD PLAN only, in ${lang}.`,
+          ].join('\n'),
+        },
+      ],
+      (delta) => emit({ type: 'plan', delta }),
+      signal,
+    )
+  } catch {
+    buildPlan = ''
+  }
   emit({ type: 'step', key: 'plan', label: 'Planning layout & style', status: 'done' })
 
   // ---- Phase 2: 21st.dev Magic MCP — multi-round component + icon search --
@@ -491,6 +571,7 @@ export async function runGeneration(
         description: merchant.description,
         themeName: theme.name,
         template,
+        plan: buildPlan || undefined,
       },
       (calls) => emit({ type: 'mcp', toolNames: agentResult?.toolNames ?? [], calls }),
       signal,
@@ -528,60 +609,25 @@ export async function runGeneration(
     status: 'done',
   })
 
-  // ---- Phase 2.5: generate missing scene/decorative images via gpt-image-2 -
-  // `allImages` = uploaded images followed by AI-generated ones, so the spec
-  // writer's imageIndex values stay valid across the combined set.
+  // ---- Image reservation (generation happens at the very end) ------------
+  // `allImages` = uploaded images followed by AI-generated ones, so the spec's
+  // imageIndex values stay valid across the combined set. Image generation is
+  // now the FINAL batch step (after all JSX is authored), but we reserve the
+  // slots now so the spec writer + JSX authors can already lay out around the
+  // full set of images they will get. `reservedTotal` is what every prompt is
+  // told is available; actual generated images are appended in Phase 6 and any
+  // index that didn't materialize is clamped afterwards.
   const allImages = [...imageDataUrls]
   const generatedImages: GeneratedImage[] = []
   // Aim for a small library of imagery so every site has a hero backdrop and a
   // few section/decoration shots even when the customer uploads little or
   // nothing. Cap generation so a run stays within the request budget.
   const TARGET_IMAGE_TOTAL = 4
-  const needed = Math.min(3, Math.max(0, TARGET_IMAGE_TOTAL - imageDataUrls.length))
-  if (needed > 0 && isImageGenConfigured()) {
-    emit({
-      type: 'step',
-      key: 'image',
-      label: 'Generating scene & decorative images (gpt-image-2)',
-      status: 'active',
-    })
-    emit({
-      type: 'log',
-      message: `Only ${imageDataUrls.length} image(s) uploaded; generating ${needed} more with gpt-image-2…`,
-    })
-    try {
-      const plan = await planImagePrompts(
-        merchant,
-        theme,
-        design,
-        analysis,
-        needed,
-        imageDataUrls.length,
-      )
-      const made = await generateSiteImages(plan, emit, signal)
-      for (const img of made) {
-        generatedImages.push(img)
-        allImages.push(img.dataUrl)
-      }
-      emit({
-        type: 'log',
-        message: `Added ${made.length} AI-generated image(s); ${allImages.length} image(s) available total`,
-      })
-    } catch (err) {
-      emit({
-        type: 'log',
-        message: `Image generation skipped (${
-          err instanceof Error ? err.message : 'error'
-        })`,
-      })
-    }
-    emit({
-      type: 'step',
-      key: 'image',
-      label: 'Generating scene & decorative images (gpt-image-2)',
-      status: 'done',
-    })
-  }
+  const plannedImageCount =
+    isImageGenConfigured()
+      ? Math.min(3, Math.max(0, TARGET_IMAGE_TOTAL - imageDataUrls.length))
+      : 0
+  const reservedTotal = imageDataUrls.length + plannedImageCount
 
   // ---- Phase 3: write the final structured site spec ---------------------
   emit({ type: 'step', key: 'write', label: 'Writing copy & assembling sections', status: 'active' })
@@ -599,7 +645,7 @@ export async function runGeneration(
     .replace('{BLUEPRINT}', templateBlueprintForPrompt(template))
     .replace('{ICONS}', ICON_KEYWORDS.join(', '))
     .replaceAll('{LANGUAGE}', lang)
-    .replaceAll('{IMAGE_COUNT}', String(allImages.length))
+    .replaceAll('{IMAGE_COUNT}', String(reservedTotal))
   const specMessages: ChatMessage[] = [
     { role: 'system', content: specSystem },
     {
@@ -608,7 +654,7 @@ export async function runGeneration(
         {
           type: 'text',
           text: [
-            briefText(merchant, allImages.length),
+            briefText(merchant, reservedTotal),
             '',
             `Chosen theme id: ${theme.id} (${theme.name})`,
             '',
@@ -672,12 +718,12 @@ export async function runGeneration(
               typeof heroRef.similarity === 'number' ? ` (match ${heroRef.similarity.toFixed(2)})` : ''
             }. Adapt its structure/composition/motion (see system rules):`,
             '```tsx',
-            (heroRef.demoCode || heroRef.code).slice(0, 3500),
+            heroRef.demoCode || heroRef.code,
             '```',
           ].join('\n')
         : ''
       const heroUser = [
-        briefText(merchant, allImages.length),
+        briefText(merchant, reservedTotal),
         '',
         `Theme tokens (use via theme.colors.*): ${JSON.stringify(theme.colors)}`,
         `Design family vibe: ${design.name} — ${design.description}`,
@@ -695,7 +741,7 @@ export async function runGeneration(
         ),
         heroRefBlock,
         '',
-        `There are ${allImages.length} image(s) available as the \`images\` prop (array of URLs).`,
+        `There are ${reservedTotal} image(s) available as the \`images\` prop (array of URLs).`,
         'Output ONLY the Hero component code now.',
       ].join('\n')
       const heroReply = await relayChat([
@@ -760,72 +806,89 @@ export async function runGeneration(
         homePage.sections.find((s) => s.kind === 'features' || s.kind === 'stats')
       return donor ?? null
     })()
+    // Collect every section that has a real 21st.dev blueprint, then author the
+    // bespoke JSX for all of them concurrently (each LLM call is independent),
+    // capped at MAX_SECTIONS. This replaces the previous serial await-per-section
+    // loop and cuts the section phase wall-clock roughly to its slowest member.
+    type AuthCandidate = {
+      page: (typeof spec.pages)[number]
+      index: number
+      section: SpecSection
+      ref: NonNullable<ReturnType<typeof findRef>>
+    }
+    const candidates: AuthCandidate[] = []
     for (const page of spec.pages) {
       for (let i = 0; i < page.sections.length; i++) {
-        if (authored >= MAX_SECTIONS) break
+        if (candidates.length >= MAX_SECTIONS) break
         const section = page.sections[i]
         if (section.kind === 'jsx' || !JSXABLE.has(section.kind)) continue
         const ref = findRef(section.kind)
         if (!ref) continue // only convert sections we actually have a 21st blueprint for
-        const refBlock = [
-          '',
-          `REFERENCE COMPONENT — real "${ref.componentName}" code pulled live from 21st.dev via MCP${
-            typeof ref.similarity === 'number' ? ` (match ${ref.similarity.toFixed(2)})` : ''
-          }. Adapt its structure/composition/motion (see system rules):`,
-          '```tsx',
-          (ref.demoCode || ref.code).slice(0, 3500),
-          '```',
-        ].join('\n')
-        const sectionUser = [
-          `This is the "${section.kind}" section of a ${
-            merchant.industry || merchant.name || 'business'
-          } website.`,
-          '',
-          `Theme tokens (use via theme.colors.*): ${JSON.stringify(theme.colors)}`,
-          `Design family vibe: ${design.name} — ${design.description}`,
-          '',
-          'Section copy to render (already written in the target language — bake it in verbatim, do not translate or invent new copy):',
-          JSON.stringify(section, null, 2),
-          refBlock,
-          '',
-          `There are ${allImages.length} image(s) available as the \`images\` prop (array of URLs).`,
-          'Output ONLY the Section component code now.',
-        ].join('\n')
-        try {
-          const reply = await relayChat([
-            { role: 'system', content: SECTION_JSX_SYSTEM },
-            { role: 'user', content: sectionUser },
-          ])
-          const sectionCode = stripCodeFence(reply)
-          if (compileJsx(sectionCode)) {
-            page.sections[i] = {
-              kind: 'jsx',
-              code: sectionCode,
-              source: `21st:${ref.componentName}`,
-              fallback: section,
-            }
-            authored++
-            emit({
-              type: 'log',
-              message: `Live JSX "${section.kind}" compiled OK (blueprint: ${ref.componentName}) — rendering real component`,
-            })
-          } else {
-            emit({
-              type: 'log',
-              message: `Live JSX "${section.kind}" invalid; keeping templated section`,
-            })
+        candidates.push({ page, index: i, section, ref })
+      }
+      if (candidates.length >= MAX_SECTIONS) break
+    }
+
+    const authorOne = async ({ page, index, section, ref }: AuthCandidate) => {
+      const refBlock = [
+        '',
+        `REFERENCE COMPONENT — real "${ref.componentName}" code pulled live from 21st.dev via MCP${
+          typeof ref.similarity === 'number' ? ` (match ${ref.similarity.toFixed(2)})` : ''
+        }. Adapt its structure/composition/motion (see system rules):`,
+        '```tsx',
+        ref.demoCode || ref.code,
+        '```',
+      ].join('\n')
+      const sectionUser = [
+        `This is the "${section.kind}" section of a ${
+          merchant.industry || merchant.name || 'business'
+        } website.`,
+        '',
+        `Theme tokens (use via theme.colors.*): ${JSON.stringify(theme.colors)}`,
+        `Design family vibe: ${design.name} — ${design.description}`,
+        '',
+        'Section copy to render (already written in the target language — bake it in verbatim, do not translate or invent new copy):',
+        JSON.stringify(section, null, 2),
+        refBlock,
+        '',
+        `There are ${reservedTotal} image(s) available as the \`images\` prop (array of URLs).`,
+        'Output ONLY the Section component code now.',
+      ].join('\n')
+      try {
+        const reply = await relayChat([
+          { role: 'system', content: SECTION_JSX_SYSTEM },
+          { role: 'user', content: sectionUser },
+        ])
+        const sectionCode = stripCodeFence(reply)
+        if (compileJsx(sectionCode)) {
+          page.sections[index] = {
+            kind: 'jsx',
+            code: sectionCode,
+            source: `21st:${ref.componentName}`,
+            fallback: section,
           }
-        } catch (err) {
+          authored++
           emit({
             type: 'log',
-            message: `Live JSX "${section.kind}" failed (${
-              err instanceof Error ? err.message : 'error'
-            }); keeping templated section`,
+            message: `Live JSX "${section.kind}" compiled OK (blueprint: ${ref.componentName}) — rendering real component`,
+          })
+        } else {
+          emit({
+            type: 'log',
+            message: `Live JSX "${section.kind}" invalid; keeping templated section`,
           })
         }
+      } catch (err) {
+        emit({
+          type: 'log',
+          message: `Live JSX "${section.kind}" failed (${
+            err instanceof Error ? err.message : 'error'
+          }); keeping templated section`,
+        })
       }
-      if (authored >= MAX_SECTIONS) break
     }
+
+    await Promise.all(candidates.map(authorOne))
 
     // ---- Signature band: render the distinctive standout component ----------
     let signatureAuthored = false
@@ -836,7 +899,7 @@ export async function runGeneration(
           typeof featuredRef.similarity === 'number' ? ` (match ${featuredRef.similarity.toFixed(2)})` : ''
         }. This is the SIGNATURE / wow component — preserve its animation, interactivity and visual flair (see system rules):`,
         '```tsx',
-        (featuredRef.demoCode || featuredRef.code).slice(0, 3500),
+        featuredRef.demoCode || featuredRef.code,
         '```',
       ].join('\n')
       const signatureUser = [
@@ -851,7 +914,7 @@ export async function runGeneration(
         JSON.stringify(signatureCopy, null, 2),
         refBlock,
         '',
-        `There are ${allImages.length} image(s) available as the \`images\` prop (array of URLs).`,
+        `There are ${reservedTotal} image(s) available as the \`images\` prop (array of URLs).`,
         'Faithfully reproduce the reference component\'s motion/interaction. Output ONLY the Section component code now.',
       ].join('\n')
       try {
@@ -903,8 +966,167 @@ export async function runGeneration(
   }
   emit({ type: 'step', key: 'sections', label: 'Coding bespoke sections (live JSX)', status: 'done' })
 
+  // ---- Phase 6: batch-generate all missing imagery (FINAL step) -----------
+  // Image generation is deliberately last: now that the full spec + bespoke JSX
+  // exist, we generate every missing scene/decoration image in one batch and
+  // append them after the uploaded images so the reserved imageIndex values
+  // resolve. Anything that fails to materialize is clamped right after.
+  if (plannedImageCount > 0) {
+    emit({
+      type: 'step',
+      key: 'image',
+      label: 'Generating scene & decorative images (gpt-image-2)',
+      status: 'active',
+    })
+    emit({
+      type: 'log',
+      message: `Batch-generating ${plannedImageCount} image(s) with gpt-image-2 (final step)…`,
+    })
+    try {
+      const plan = await planImagePrompts(
+        merchant,
+        theme,
+        design,
+        analysis,
+        plannedImageCount,
+        imageDataUrls.length,
+      )
+      const made = await generateSiteImages(plan, emit, signal)
+      for (const img of made) {
+        generatedImages.push(img)
+        allImages.push(img.dataUrl)
+      }
+      emit({
+        type: 'log',
+        message: `Added ${made.length} AI-generated image(s); ${allImages.length} image(s) available total`,
+      })
+    } catch (err) {
+      emit({
+        type: 'log',
+        message: `Image generation skipped (${
+          err instanceof Error ? err.message : 'error'
+        })`,
+      })
+    }
+    emit({
+      type: 'step',
+      key: 'image',
+      label: 'Generating scene & decorative images (gpt-image-2)',
+      status: 'done',
+    })
+  }
+
+  // Clamp any image indexes the spec writer reserved but that never
+  // materialized (e.g. a generation failed), so templated sections never point
+  // past the real media set.
+  clampImageIndexes(spec, imageDataUrls.length + generatedImages.length)
+
+  // ---- Phase 7: agent self-polish — fix deformed / broken sections --------
+  await polishSpec(spec, theme, emit, signal)
+
   emit({ type: 'spec', spec })
   return { spec, generatedImages }
+}
+
+/**
+ * Clamps every `imageIndex` / `imageIndexes` in the spec to a valid range so no
+ * section references an image slot that doesn't exist in the final media set.
+ */
+function clampImageIndexes(spec: SiteSpec, total: number): void {
+  const fix = (idx: number): number => {
+    if (total <= 0) return 0
+    return idx >= 0 && idx < total ? idx : 0
+  }
+  const fixSection = (section: SpecSection): void => {
+    if (section.kind === 'showcase' && typeof section.imageIndex === 'number') {
+      section.imageIndex = fix(section.imageIndex)
+    } else if (section.kind === 'gallery' && Array.isArray(section.imageIndexes)) {
+      const valid = section.imageIndexes.filter((i) => i >= 0 && i < total)
+      section.imageIndexes = valid.length ? valid : total > 0 ? [0] : []
+    } else if (section.kind === 'jsx' && section.fallback) {
+      fixSection(section.fallback)
+    }
+  }
+  for (const page of spec.pages) {
+    if (page.hero && typeof page.hero.imageIndex === 'number') {
+      page.hero.imageIndex = fix(page.hero.imageIndex)
+    }
+    for (const section of page.sections) fixSection(section)
+  }
+}
+
+/**
+ * Final self-polish pass: the agent re-reviews every live-rendered JSX
+ * component (hero + bespoke sections) for real visual defects — CJK vertical
+ * collapse, overflow/deformation, low contrast, em-dashes, broken images — and
+ * rewrites only the ones that need fixing. Best-effort and compile-gated: a
+ * polished component replaces the original only if it still compiles.
+ */
+async function polishSpec(
+  spec: SiteSpec,
+  theme: ReturnType<typeof getTheme>,
+  emit: EmitFn,
+  signal?: AbortSignal,
+): Promise<void> {
+  type JsxSection = Extract<SpecSection, { kind: 'jsx' }>
+  type Target = { kind: 'hero' } | { kind: 'section'; section: JsxSection }
+  const targets: Target[] = []
+  if (spec.heroJsx) targets.push({ kind: 'hero' })
+  for (const page of spec.pages) {
+    for (const section of page.sections) {
+      if (section.kind === 'jsx' && section.code) targets.push({ kind: 'section', section })
+    }
+  }
+  if (!targets.length) return
+
+  const MAX_POLISH = 8
+  const slice = targets.slice(0, MAX_POLISH)
+  emit({ type: 'step', key: 'polish', label: 'Polishing sections', status: 'active' })
+  emit({ type: 'log', message: `Polishing ${slice.length} live component(s) for defects…` })
+
+  let fixed = 0
+  for (const target of slice) {
+    if (signal?.aborted) break
+    const original =
+      target.kind === 'hero' ? (spec.heroJsx as string) : (target.section.code as string)
+    try {
+      const reply = await relayChat([
+        { role: 'system', content: POLISH_SYSTEM },
+        {
+          role: 'user',
+          content: [
+            `Theme tokens (used via theme.colors.*): ${JSON.stringify(theme.colors)}`,
+            '',
+            'Component code to QA-polish:',
+            '```',
+            original,
+            '```',
+            '',
+            'Return the corrected component code only (or the original unchanged if it has no defects).',
+          ].join('\n'),
+        },
+      ])
+      const polished = stripCodeFence(reply)
+      if (!polished || polished.trim() === original.trim()) continue
+      if (!compileJsx(polished)) {
+        emit({ type: 'log', message: 'Polished component did not compile; keeping original' })
+        continue
+      }
+      if (target.kind === 'hero') spec.heroJsx = polished
+      else target.section.code = polished
+      fixed++
+    } catch (err) {
+      emit({
+        type: 'log',
+        message: `Polish skipped for one component (${
+          err instanceof Error ? err.message : 'error'
+        })`,
+      })
+    }
+  }
+
+  emit({ type: 'log', message: `Self-polish complete; fixed ${fixed} section(s)` })
+  emit({ type: 'step', key: 'polish', label: 'Polishing sections', status: 'done' })
 }
 
 /**

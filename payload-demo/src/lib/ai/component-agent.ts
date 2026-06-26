@@ -11,6 +11,7 @@
  */
 
 import { extractJson, relayChat, type ChatMessage } from './relay'
+import { AGENT_ROLE } from './taste-skill'
 import type { SiteTemplate } from './templates'
 import type { IconResult } from './twentyfirst'
 import {
@@ -54,6 +55,8 @@ type AgentContext = {
   description?: string
   themeName: string
   template: SiteTemplate
+  /** the lead designer's plan-first BUILD PLAN; the agent executes against it */
+  plan?: string
 }
 
 const MAX_ROUNDS = 8
@@ -132,7 +135,9 @@ function sectionPlan(template: SiteTemplate): string[] {
   return [...kinds]
 }
 
-const SYSTEM = `You are a senior UI engineer with live access to the 21st.dev Magic MCP server. You are assembling a multi-page B2B website and must pull REAL, production-grade component source code for each major section, plus relevant brand/trust icons.
+const SYSTEM = `${AGENT_ROLE}
+
+You have live access to the 21st.dev Magic MCP server. You are assembling a multi-page B2B website and must pull REAL, production-grade component source code for each major section, plus relevant brand/trust icons.
 
 Available MCP tools:
 1. component_inspiration — searches 21st.dev and returns the actual source code of a matching UI component.
@@ -145,8 +150,10 @@ Respond EVERY round with ONLY one JSON object, no prose, exactly one of:
 {"thought":"...","tool":"logo_search","queries":["...","..."]}
 {"thought":"...","done":true}
 
+You work PLAN-FIRST and FREEFORM: if a BUILD PLAN is given, execute against it — pull the sections it calls for, in an order that makes sense, and chase its "signature" idea. You are NOT bound to a fixed pipeline; be creative, pull any 21st.dev component that elevates THIS brand.
+
 Rules:
-- Make ONE tool call per round. Pull real components for the key sections of THIS site — at minimum hero, features and a strong CTA, plus any of {stats, showcase, steps, faq} that suit the brand.
+- Make ONE tool call per round. Pull real components for the sections THIS site needs — always cover at least hero, features and a strong CTA, then freely add any of {stats, showcase, steps, faq, gallery, testimonials, pricing, ...} that suit the brand and plan.
 - PREFER POPULAR, HIGHLY-POLISHED, MODERN components. Bias your searchQuery toward the kind of work that trends on 21st.dev / Awwwards / Dribbble — well-crafted, production-grade, visually rich. Avoid plain/generic boilerplate.
 - DEDICATE AT LEAST ONE round to a distinctive "SIGNATURE" component: set "section":"signature" and search for an interesting, popular, animated/interactive standout (e.g. "animated bento grid", "aurora gradient background", "infinite logo marquee", "spotlight hover cards", "3d tilt card", "scroll reveal section", "animated number counter"). This is the site's wow moment — pick one that fits the brand's vibe.
 - Do NOT search the same section twice. Pick precise, modern searchQuery phrases (e.g. "industrial hero section", "feature grid cards", "stats counter band", "cta banner").
@@ -185,8 +192,9 @@ export async function runComponentAgent(
             ctx.industry ? `Industry: ${ctx.industry}` : null,
             ctx.description ? `About: ${ctx.description}` : null,
             `Theme: ${ctx.themeName}`,
-            `Template: ${ctx.template.name} (${ctx.template.id})`,
-            `Sections you should aim to cover: ${recommended.join(', ')}`,
+            `Template archetype (a starting reference, not a constraint): ${ctx.template.name} (${ctx.template.id})`,
+            ctx.plan ? `\nYour BUILD PLAN (execute against it, freeform):\n${ctx.plan}` : null,
+            `\nSections worth covering for this archetype: ${recommended.join(', ')} (a hint — add/drop to fit your plan).`,
             '',
             'Begin. Respond with your first JSON action.',
           ]
@@ -351,7 +359,7 @@ export async function runComponentAgent(
 export function componentRefsForPrompt(refs: ComponentRef[]): string {
   if (!refs.length) return ''
   const blocks = refs.slice(0, 6).map((r) => {
-    const code = (r.demoCode || r.code).slice(0, 1800)
+    const code = (r.demoCode || r.code).slice(0, 8000)
     return `### ${r.section} — ${r.componentName}${
       typeof r.similarity === 'number' ? ` (match ${r.similarity.toFixed(2)})` : ''
     }\n\`\`\`tsx\n${code}\n\`\`\``

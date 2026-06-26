@@ -24,7 +24,25 @@ import * as React from 'react'
 import * as Lucide from 'lucide-react'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import { motion, AnimatePresence } from 'motion/react'
+import {
+  motion,
+  AnimatePresence,
+  useScroll,
+  useTransform,
+  useSpring,
+  useMotionValue,
+  useMotionValueEvent,
+  useMotionTemplate,
+  useInView,
+  useAnimate,
+  useAnimationControls,
+  useVelocity,
+  useTime,
+  useReducedMotion,
+  useDragControls,
+  useAnimationFrame,
+  useCycle,
+} from 'motion/react'
 
 export type CompiledComponent = React.ComponentType<Record<string, unknown>>
 
@@ -62,6 +80,27 @@ const SAFE_GLOBALS: Record<string, unknown> = {
   console: { log: () => {}, warn: () => {}, error: () => {} },
 }
 
+/**
+ * Read-only/observational browser APIs commonly used by scroll-reveal and
+ * animation snippets. Allow-listed by name and resolved lazily against
+ * `globalThis` at access time (so SSR, where they are absent, yields `undefined`
+ * rather than a captured stale value — animation code runs inside effects). They
+ * are capitalized/global and would otherwise be shadowed by the Passthrough
+ * component fallback or hidden entirely. None let a snippet mutate the host
+ * beyond what `motion` already allows.
+ */
+const SAFE_BROWSER_GLOBALS = new Set([
+  'IntersectionObserver',
+  'ResizeObserver',
+  'MutationObserver',
+  'requestAnimationFrame',
+  'cancelAnimationFrame',
+  'setTimeout',
+  'clearTimeout',
+  'setInterval',
+  'clearInterval',
+])
+
 const REACT_BINDINGS: Record<string, unknown> = {
   React,
   Fragment: React.Fragment,
@@ -85,6 +124,21 @@ function buildScope(extra: Record<string, unknown>): Record<string, unknown> {
     twMerge,
     motion,
     AnimatePresence,
+    useScroll,
+    useTransform,
+    useSpring,
+    useMotionValue,
+    useMotionValueEvent,
+    useMotionTemplate,
+    useInView,
+    useAnimate,
+    useAnimationControls,
+    useVelocity,
+    useTime,
+    useReducedMotion,
+    useDragControls,
+    useAnimationFrame,
+    useCycle,
     ...extra,
   }
 
@@ -97,6 +151,10 @@ function buildScope(extra: Record<string, unknown>): Record<string, unknown> {
     get(target, prop: string | symbol) {
       if (typeof prop === 'symbol') return undefined
       if (prop in target) return target[prop]
+      // Read-only/observational browser APIs (scroll-reveal, rAF timers…),
+      // resolved lazily so they are the real client globals at access time.
+      if (SAFE_BROWSER_GLOBALS.has(prop))
+        return (globalThis as Record<string, unknown>)[prop]
       // lucide-react icons are referenced by capitalized name (e.g. <Check />)
       if (prop in Lucide) return (Lucide as Record<string, unknown>)[prop]
       // Unknown capitalized identifier -> assume it's a component import we

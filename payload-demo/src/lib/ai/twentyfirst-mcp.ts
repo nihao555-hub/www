@@ -46,8 +46,14 @@ export function isMcpConfigured(): boolean {
   return isTwentyFirstConfigured()
 }
 
-/** Hard cap on persisted/prompted component source to keep payloads sane. */
-const MAX_CODE_CHARS = 6000
+/**
+ * Safety cap on component source. We deliberately keep this very high so the
+ * design agent receives the component code *in full* (the whole point of pulling
+ * real 21st.dev code as a blueprint); the cap only exists as a runaway guard for
+ * pathologically huge files. Most components are far below it and pass through
+ * untouched.
+ */
+const MAX_CODE_CHARS = 60000
 
 function truncate(code: string, max = MAX_CODE_CHARS): string {
   if (code.length <= max) return code
@@ -184,7 +190,7 @@ export async function openMcpSession(): Promise<McpSession> {
         componentName: c.componentName || c.demoName || searchQuery,
         demoName: c.demoName,
         code: truncate(c.componentCode || c.demoCode || ''),
-        demoCode: c.demoCode ? truncate(c.demoCode, 2500) : undefined,
+        demoCode: c.demoCode ? truncate(c.demoCode) : undefined,
         similarity: typeof c.similarity === 'number' ? c.similarity : undefined,
       }))
   }
