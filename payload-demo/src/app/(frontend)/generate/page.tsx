@@ -10,9 +10,5 @@ export const metadata: Metadata = {
 }
 
 export default function GeneratePage() {
-  return (
-    <div className="container py-12">
-      <GenerateForm />
-    </div>
-  )
+  return <GenerateForm />
 }

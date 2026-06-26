@@ -1,8 +1,8 @@
 'use client'
 
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Loader2, Sparkles } from 'lucide-react'
+import { Loader2, Plus, Sparkles } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -68,6 +68,9 @@ export const GenerateForm: React.FC = () => {
   const [mcpToolNames, setMcpToolNames] = useState<string[]>([])
   const [logs, setLogs] = useState<string[]>([])
   const [result, setResult] = useState<DoneResult | null>(null)
+  const [history, setHistory] = useState<
+    { id: number; siteName: string; slug: string; themeId?: string; updatedAt?: string }[]
+  >([])
 
   const themeOptions = useMemo(
     () => [
@@ -78,6 +81,21 @@ export const GenerateForm: React.FC = () => {
     ],
     [],
   )
+
+  const handleNewTask = useCallback(() => {
+    setRunning(false)
+    setError(null)
+    setResult(null)
+    setSteps([])
+    setAnalysis('')
+    setPlan('')
+    setChosenTheme(null)
+    setChosenTemplate(null)
+    setInspiration(null)
+    setMcpCalls([])
+    setMcpToolNames([])
+    setLogs([])
+  }, [])
 
   const upsertStep = useCallback((s: Step) => {
     setSteps((prev) => {
@@ -192,6 +210,30 @@ export const GenerateForm: React.FC = () => {
   }
 
   const showWorkspace = running || !!result || steps.length > 0
+
+  // The generator is a full-viewport app shell; lock background scroll.
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [])
+
+  // Load recent generated sites for the idle-state history rail.
+  useEffect(() => {
+    if (showWorkspace) return
+    let cancelled = false
+    fetch('/api/ai-sites?sort=-updatedAt&limit=30&depth=0')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && d?.docs) setHistory(d.docs)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [showWorkspace])
   const currentStepLabel = useMemo(() => {
     const active = [...steps].reverse().find((s) => s.status === 'active')
     if (active) return active.label
@@ -214,28 +256,85 @@ export const GenerateForm: React.FC = () => {
     />
   )
 
-  // ---- Idle: minimal one-line brief, centered ----
+  // ---- Idle: far-left nav (new task + history) + centered one-line brief ----
   if (!showWorkspace) {
     return (
-      <div className="mx-auto flex min-h-[60vh] w-full max-w-2xl flex-col justify-center gap-5">
-        <h2 className="text-center text-3xl font-semibold tracking-tight">
-          一句话生成你的独立站
-        </h2>
-        {promptBox}
-        {error && (
-          <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
+      <div className="fixed inset-0 z-40 flex bg-background">
+        {/* Far-left navigation: new task + history */}
+        <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-muted/30 sm:flex">
+          <div className="flex items-center gap-2 px-4 py-4">
+            <Sparkles className="size-5 text-primary" />
+            <span className="text-sm font-semibold tracking-tight">独立站生成器</span>
           </div>
-        )}
+          <div className="px-3">
+            <Button onClick={handleNewTask} size="sm" className="w-full justify-start gap-2">
+              <Plus className="size-4" />
+              新建任务
+            </Button>
+          </div>
+          <div className="px-4 pb-2 pt-5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            历史任务
+          </div>
+          <nav className="min-h-0 flex-1 space-y-0.5 overflow-auto px-2 pb-4">
+            {history.length === 0 ? (
+              <p className="px-3 py-6 text-center text-xs text-muted-foreground">暂无历史任务</p>
+            ) : (
+              history.map((h) => (
+                <a
+                  key={h.id}
+                  href={`/s/${h.slug}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block rounded-md px-3 py-2 text-sm text-foreground/80 transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  <span className="block truncate font-medium">{h.siteName || h.slug}</span>
+                  <span className="block truncate text-[11px] text-muted-foreground">/s/{h.slug}</span>
+                </a>
+              ))
+            )}
+          </nav>
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- /admin is served by Payload, not a Next page route */}
+          <a
+            href="/admin"
+            className="border-t border-border px-4 py-3 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            → 进入后台
+          </a>
+        </aside>
+
+        {/* Centered one-line brief */}
+        <main className="flex min-w-0 flex-1 flex-col items-center justify-center gap-5 px-6">
+          <div className="w-full max-w-2xl">
+            <h2 className="mb-5 text-center text-3xl font-semibold tracking-tight">
+              一句话生成你的独立站
+            </h2>
+            {promptBox}
+            {error && (
+              <div className="mt-3 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+                {error}
+              </div>
+            )}
+          </div>
+        </main>
       </div>
     )
   }
 
-  // ---- Working / done: left 20% rail (status + input), right 80% live preview ----
+  // ---- Working / done: full-bleed left 20% rail (status + input) + right 80% live preview ----
   return (
-    <div className="flex h-[calc(100vh-7rem)] min-h-[560px] flex-col gap-4 lg:flex-row">
+    <div className="fixed inset-0 z-40 flex flex-col bg-background lg:flex-row">
       {/* Left rail: agent status (top) + input (bottom) */}
-      <div className="flex w-full flex-col gap-3 lg:w-1/5 lg:min-w-[260px]">
+      <div className="flex w-full shrink-0 flex-col gap-3 border-b border-border p-3 lg:h-full lg:w-1/5 lg:min-w-[280px] lg:border-b-0 lg:border-r">
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <Sparkles className="size-4 text-primary" />
+            工作台
+          </div>
+          <Button onClick={handleNewTask} variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs">
+            <Plus className="size-3.5" />
+            新建任务
+          </Button>
+        </div>
         <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <CardContent className="min-h-0 flex-1 overflow-auto p-4">
             <AgentWorkflow
@@ -264,8 +363,7 @@ export const GenerateForm: React.FC = () => {
       </div>
 
       {/* Right: full live independent-site preview */}
-      <Card className="flex min-h-0 w-full flex-col overflow-hidden lg:w-4/5 lg:flex-1">
-        <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <AnimatePresence mode="wait">
             {result ? (
               <motion.iframe
@@ -343,8 +441,7 @@ export const GenerateForm: React.FC = () => {
               </Button>
             </div>
           )}
-        </CardContent>
-      </Card>
+      </div>
     </div>
   )
 }
