@@ -22,6 +22,8 @@
     "test:int": "cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts"
   },
   "dependencies": {
+    "@21st-dev/magic": "0.1.0",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@payloadcms/admin-bar": "3.85.1",
     "@payloadcms/db-sqlite": "3.85.1",
     "@payloadcms/live-preview-react": "3.85.1",

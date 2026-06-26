@@ -12,6 +12,9 @@ const NEXT_PUBLIC_SERVER_URL = process.env.VERCEL_PROJECT_PRODUCTION_URL
   : process.env.__NEXT_PRIVATE_ORIGIN || 'http://localhost:3000'
 
 const nextConfig: NextConfig = {
+  // The 21st.dev Magic MCP server is spawned as a child process and the MCP SDK
+  // relies on Node built-ins / dynamic requires, so keep both out of the bundle.
+  serverExternalPackages: ['@modelcontextprotocol/sdk', '@21st-dev/magic'],
   // Temporarily required on Windows until Next.js fixes Turbopack Sass resolution.
   // See: https://github.com/vercel/next.js/issues/86431
   sassOptions: {

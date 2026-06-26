@@ -26,6 +26,18 @@ type Inspiration = {
   components: { name: string; summary?: string }[]
   icons: { title: string; svgUrl: string }[]
 }
+type McpCall = {
+  id: number
+  round: number
+  tool: 'component_inspiration' | 'logo_search'
+  section?: string
+  query: string
+  status: 'running' | 'done' | 'error'
+  resultCount?: number
+  componentName?: string
+  similarity?: number
+  codePreview?: string
+}
 type DoneResult = {
   pageId: number
   slug: string
@@ -48,6 +60,8 @@ export const GenerateForm: React.FC = () => {
   const [chosenTheme, setChosenTheme] = useState<{ id: string; name: string } | null>(null)
   const [chosenTemplate, setChosenTemplate] = useState<{ id: string; name: string } | null>(null)
   const [inspiration, setInspiration] = useState<Inspiration | null>(null)
+  const [mcpCalls, setMcpCalls] = useState<McpCall[]>([])
+  const [mcpToolNames, setMcpToolNames] = useState<string[]>([])
   const [logs, setLogs] = useState<string[]>([])
   const [result, setResult] = useState<DoneResult | null>(null)
 
@@ -89,6 +103,8 @@ export const GenerateForm: React.FC = () => {
     setChosenTheme(null)
     setChosenTemplate(null)
     setInspiration(null)
+    setMcpCalls([])
+    setMcpToolNames([])
     setLogs([])
     setRunning(true)
 
@@ -122,6 +138,12 @@ export const GenerateForm: React.FC = () => {
           setChosenTemplate({ id: String(payload.id), name: String(payload.name) })
         } else if (event === 'inspiration') {
           setInspiration(payload as unknown as Inspiration)
+        } else if (event === 'mcp') {
+          const calls = Array.isArray(payload.calls) ? (payload.calls as McpCall[]) : []
+          setMcpCalls(calls)
+          if (Array.isArray(payload.toolNames) && payload.toolNames.length) {
+            setMcpToolNames(payload.toolNames as string[])
+          }
         } else if (event === 'log') {
           setLogs((prev) => [...prev, String(payload.message ?? '')])
         } else if (event === 'done') {
@@ -222,6 +244,8 @@ export const GenerateForm: React.FC = () => {
                   steps={steps}
                   analysis={analysis}
                   inspiration={inspiration}
+                  mcpCalls={mcpCalls}
+                  mcpToolNames={mcpToolNames}
                   logs={logs}
                   running={running}
                   chosenTheme={chosenTheme}

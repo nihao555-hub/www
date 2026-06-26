@@ -88,6 +88,15 @@ export type BrandIcon = {
   svgUrl: string
 }
 
+/** A real component pulled from 21st.dev via MCP, kept for transparency/debug. */
+export type SpecComponentRef = {
+  section: string
+  componentName: string
+  similarity?: number
+  /** truncated real source code returned by the MCP server */
+  code: string
+}
+
 export type SiteSpec = {
   siteName: string
   slug: string
@@ -100,6 +109,8 @@ export type SiteSpec = {
   pages: SpecPage[]
   /** brand/category icons fetched from 21st.dev, surfaced as a trust strip */
   brandIcons?: BrandIcon[]
+  /** real component code pulled from 21st.dev via MCP that informed the design */
+  componentRefs?: SpecComponentRef[]
   meta: {
     title: string
     description: string

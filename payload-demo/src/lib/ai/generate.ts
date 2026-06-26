@@ -11,13 +11,13 @@ import {
   templateBlueprintForPrompt,
   pickTemplateFromAnalysis,
 } from './templates'
+import type { ComponentInspiration, IconResult } from './twentyfirst'
+import { isMcpConfigured } from './twentyfirst-mcp'
 import {
-  searchComponents,
-  searchIcons,
-  isTwentyFirstConfigured,
-  type ComponentInspiration,
-  type IconResult,
-} from './twentyfirst'
+  runComponentAgent,
+  componentRefsForPrompt,
+  type McpToolCall,
+} from './component-agent'
 
 export type MerchantInput = {
   name: string
@@ -61,6 +61,7 @@ export type GenEvent =
   | { type: 'theme'; id: string; name: string; reason?: string }
   | { type: 'template'; id: string; name: string }
   | { type: 'inspiration'; components: ComponentInspiration[]; icons: IconResult[] }
+  | { type: 'mcp'; toolNames: string[]; calls: McpToolCall[] }
   | { type: 'spec'; spec: SiteSpec }
 
 const ANALYSIS_SYSTEM = `You are a senior brand & web designer working at the level of v0 / Lovable, specialized in professional B2B independent commerce websites (the kind a sales/export team sends to overseas buyers).
@@ -204,18 +205,6 @@ function pickThemeFromAnalysis(analysis: string): string | undefined {
   return undefined
 }
 
-function inspirationQueries(merchant: MerchantInput, _analysis: string): string[] {
-  const base = [merchant.industry, merchant.name].filter(Boolean).join(' ').trim()
-  const queries = [
-    `${base} landing page hero section`.trim(),
-    `${base} feature grid cards`.trim(),
-    `${base} call to action section`.trim(),
-  ]
-  // Pull a noun-ish keyword from the analysis for icon search.
-  if (merchant.industry) queries.push(merchant.industry)
-  return queries.filter((q) => q.length > 3)
-}
-
 export type EmitFn = (event: GenEvent) => void
 
 /**
@@ -281,52 +270,73 @@ export async function runGeneration(
   emit({ type: 'log', message: `Selected theme: ${theme.name} (${theme.mood})` })
   emit({ type: 'step', key: 'plan', label: 'Planning layout & style', status: 'done' })
 
-  // ---- Phase 2: design inspiration from 21st.dev (components + icons) -----
+  // ---- Phase 2: 21st.dev Magic MCP — multi-round component + icon search --
   emit({
     type: 'step',
     key: 'inspire',
-    label: 'Searching 21st.dev components & icons',
+    label: 'Searching 21st.dev via MCP (multi-round tool calls)',
     status: 'active',
   })
   let components: ComponentInspiration[] = []
   let icons: IconResult[] = []
-  try {
-    const queries = inspirationQueries(merchant, analysis)
-    if (isTwentyFirstConfigured()) {
-      const results = await Promise.all(queries.slice(0, 3).map((q) => searchComponents(q, signal)))
-      components = results.flat().slice(0, 6)
-    }
-    if (isTwentyFirstConfigured()) {
-      icons = await searchIcons(merchant.industry || merchant.name || 'business', signal)
-    }
-  } catch {
-    // Inspiration is best-effort; never block generation on it.
+  let componentRefs: { section: string; componentName: string; similarity?: number; code: string }[] = []
+  let agentResult: Awaited<ReturnType<typeof runComponentAgent>> | null = null
+  if (isMcpConfigured()) {
+    agentResult = await runComponentAgent(
+      {
+        name: merchant.name || 'New brand',
+        industry: merchant.industry,
+        description: merchant.description,
+        themeName: theme.name,
+        template,
+      },
+      (calls) => emit({ type: 'mcp', toolNames: agentResult?.toolNames ?? [], calls }),
+      signal,
+    )
+    icons = agentResult.icons
+    componentRefs = agentResult.refs.map((r) => ({
+      section: r.section,
+      componentName: r.componentName,
+      similarity: r.similarity,
+      code: r.code,
+    }))
+    components = agentResult.refs.map((r) => ({
+      name: r.componentName,
+      summary: r.section,
+    }))
+    emit({ type: 'mcp', toolNames: agentResult.toolNames, calls: agentResult.calls })
   }
-  if (components.length) {
+  if (agentResult?.toolNames.length) {
     emit({
       type: 'log',
-      message: `Found ${components.length} matching component pattern(s) on 21st.dev`,
+      message: `MCP server tools: ${agentResult.toolNames.join(', ')}`,
     })
   }
-  if (icons.length) {
-    emit({ type: 'log', message: `Found ${icons.length} brand icon(s) on 21st.dev` })
+  if (agentResult?.calls.length) {
+    emit({
+      type: 'log',
+      message: `Made ${agentResult.calls.length} MCP tool call(s); pulled ${componentRefs.length} real component(s) + ${icons.length} icon(s)`,
+    })
   }
   emit({ type: 'inspiration', components, icons })
   emit({
     type: 'step',
     key: 'inspire',
-    label: 'Searching 21st.dev components & icons',
+    label: 'Searching 21st.dev via MCP (multi-round tool calls)',
     status: 'done',
   })
 
   // ---- Phase 3: write the final structured site spec ---------------------
   emit({ type: 'step', key: 'write', label: 'Writing copy & assembling sections', status: 'active' })
 
-  const inspirationNote = components.length
-    ? `Design inspiration (proven component patterns to match in quality):\n${components
-        .map((c) => `- ${c.name}${c.summary ? `: ${c.summary}` : ''}`)
-        .join('\n')}`
-    : 'No external component inspiration available; rely on your own taste.'
+  const inspirationNote =
+    agentResult && agentResult.refs.length
+      ? componentRefsForPrompt(agentResult.refs)
+      : components.length
+        ? `Design inspiration (proven component patterns to match in quality):\n${components
+            .map((c) => `- ${c.name}${c.summary ? `: ${c.summary}` : ''}`)
+            .join('\n')}`
+        : 'No external component inspiration available; rely on your own taste.'
 
   const specSystem = SPEC_SYSTEM.replace('{CATALOG}', catalog)
     .replace('{BLUEPRINT}', templateBlueprintForPrompt(template))
@@ -371,6 +381,10 @@ export async function runGeneration(
       .filter((i) => i.svgUrl)
       .slice(0, 6)
       .map((i) => ({ title: i.title, svgUrl: i.svgUrl }))
+  }
+  // Persist the real MCP-pulled component code that informed the design.
+  if (componentRefs.length) {
+    spec.componentRefs = componentRefs
   }
 
   emit({ type: 'step', key: 'write', label: 'Writing copy & assembling sections', status: 'done' })
