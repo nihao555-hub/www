@@ -1,9 +1,10 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import {
   Brain,
+  Clock,
   FileText,
   ImageIcon,
   Images,
@@ -36,6 +37,7 @@ import {
   ToolInput,
   ToolOutput,
 } from '@/components/ai-elements/tool'
+import { Task, TaskContent, TaskItem, TaskTrigger } from '@/components/ai-elements/task'
 import { CodeBlock } from '@/components/ai-elements/code-block'
 
 export type WorkflowStep = { key: string; label: string; status: 'active' | 'done' }
@@ -113,6 +115,29 @@ function fallbackLabel(key: string): string {
   }
 }
 
+/** Human-readable elapsed time for a step (e.g. `3.2s`, `1m05s`). */
+function formatDuration(ms: number): string {
+  const secs = Math.max(0, ms / 1000)
+  if (secs < 60) return `${secs.toFixed(1)}s`
+  const m = Math.floor(secs / 60)
+  const r = Math.round(secs % 60)
+  return `${m}m${r.toString().padStart(2, '0')}s`
+}
+
+const StepTimer: React.FC<{ ms: number; active: boolean }> = ({ ms, active }) => (
+  <span
+    className={
+      'inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[10px] tabular-nums ' +
+      (active
+        ? 'animate-pulse border-primary/40 bg-primary/10 text-primary'
+        : 'border-border bg-muted/50 text-muted-foreground')
+    }
+  >
+    <Clock className="size-3" />
+    {formatDuration(ms)}
+  </span>
+)
+
 /** Map the streaming step status to the chain-of-thought visual status. */
 function cotStatus(state: StepState): 'complete' | 'active' | 'pending' {
   if (state === 'done') return 'complete'
@@ -178,6 +203,41 @@ export const AgentWorkflow: React.FC<{
   }
   const labelOf = (key: string) => steps.find((x) => x.key === key)?.label ?? fallbackLabel(key)
 
+  // Per-step timing: record when each step first appears and when it finishes,
+  // then surface a live-ticking (active) / frozen (done) elapsed badge. Both the
+  // recorded timings and the "now" clock live in state (not a ref / Date.now()
+  // in render) so the badges re-render purely and update predictably.
+  const [timings, setTimings] = useState<Record<string, { start: number; end?: number }>>({})
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    setTimings((prev) => {
+      const next = { ...prev }
+      const ts = Date.now()
+      let changed = false
+      for (const s of steps) {
+        if (!next[s.key]) {
+          next[s.key] = { start: ts }
+          changed = true
+        }
+        if (s.status === 'done' && next[s.key].end == null) {
+          next[s.key] = { ...next[s.key], end: ts }
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [steps])
+  useEffect(() => {
+    if (!running) return
+    const id = setInterval(() => setNow(Date.now()), 500)
+    return () => clearInterval(id)
+  }, [running])
+  const elapsedOf = (key: string): number | null => {
+    const t = timings[key]
+    if (!t) return null
+    return (t.end ?? now) - t.start
+  }
+
   // Step-by-step reveal: only render steps the agent has actually reached
   // (emitted at least once), so the chain unfolds live instead of showing the
   // whole pipeline up front.
@@ -217,6 +277,7 @@ export const AgentWorkflow: React.FC<{
         {revealed.map((key) => {
           const state = stateOf(key)
           const status = cotStatus(state)
+          const elapsed = elapsedOf(key)
 
           // The "read" step surfaces the streaming design reasoning.
           const showReasoning = key === 'read' && (analysis || running)
@@ -240,7 +301,14 @@ export const AgentWorkflow: React.FC<{
             >
             <ChainOfThoughtStep
               icon={STEP_ICONS[key]}
-              label={labelOf(key)}
+              label={
+                <span className="flex items-center justify-between gap-2">
+                  <span>{labelOf(key)}</span>
+                  {elapsed != null && (
+                    <StepTimer ms={elapsed} active={state === 'active'} />
+                  )}
+                </span>
+              }
               status={status}
             >
               {showPlanChips && (
@@ -281,9 +349,13 @@ export const AgentWorkflow: React.FC<{
               {showMcp && (
                 <div className="flex flex-col gap-2">
                   {mcpToolNames.length > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      MCP server 工具：{mcpToolNames.map((t) => `\`${t}\``).join('、')}
-                    </p>
+                    <ChainOfThoughtSearchResults>
+                      {mcpToolNames.map((t) => (
+                        <ChainOfThoughtSearchResult key={t}>
+                          <Wrench className="size-3" /> {t}
+                        </ChainOfThoughtSearchResult>
+                      ))}
+                    </ChainOfThoughtSearchResults>
                   )}
                   {mcpCalls.map((call) => {
                     const callState =
@@ -369,19 +441,23 @@ export const AgentWorkflow: React.FC<{
               )}
 
               {stepLogs.length > 0 && (
-                <ul className="space-y-1 border-l border-border/60 pl-3">
-                  {stepLogs.map((l, i) => (
-                    <motion.li
-                      key={`${key}-log-${i}`}
-                      initial={{ opacity: 0, x: -4 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="text-xs leading-relaxed text-muted-foreground"
-                    >
-                      {l}
-                    </motion.li>
-                  ))}
-                </ul>
+                <Task defaultOpen>
+                  <TaskTrigger title={`执行记录 · ${stepLogs.length}`} />
+                  <TaskContent>
+                    {stepLogs.map((l, i) => (
+                      <TaskItem key={`${key}-log-${i}`}>
+                        <motion.span
+                          initial={{ opacity: 0, x: -4 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="block text-xs leading-relaxed"
+                        >
+                          {l}
+                        </motion.span>
+                      </TaskItem>
+                    ))}
+                  </TaskContent>
+                </Task>
               )}
             </ChainOfThoughtStep>
             </motion.div>

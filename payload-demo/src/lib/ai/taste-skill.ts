@@ -72,4 +72,10 @@ export const TASTE_SKILL_JSX_RULES = `FRONT-END DESIGN SKILL (taste-skill — ap
 - ONE corner-radius scale across the component. Tasteful, purposeful motion only (no infinite loops everywhere).
 - NO em-dash "—" or en-dash "–" anywhere visible — use "-", commas, or periods (non-negotiable).
 - NO three equal cards in a row (use zig-zag / asymmetric / bento), NO div-based fake product UI, NO generic names or fake-perfect numbers, NO filler verbs, NO section-number eyebrows or "Step 1/Stage 1" labels, NO scroll cues, NO decorative status dots, NO rotated vertical text.
-- Mathematically clean spacing; verify button text contrasts its background.`
+- Mathematically clean spacing; verify button text contrasts its background.
+- LAYOUT INTEGRITY (no overlap, no broken layout — this is mandatory):
+  • Lay out content in NORMAL FLOW (flex/grid). Use \`absolute\`/\`-translate\`/negative margins ONLY for decorative, non-text layers (blobs, glows, gradients) and give those \`pointer-events-none\` and a LOWER z-index than the content; readable text/buttons/images must NEVER sit under or overlap another element.
+  • Every decorative \`absolute\` layer lives inside a \`relative overflow-hidden\` parent so it cannot escape and cover neighbouring sections; wrap real content in \`relative z-10\`.
+  • Constrain width: top wrapper is \`w-full\`, the inner content uses a centered \`max-w-6xl mx-auto px-4 sm:px-6 lg:px-8\`; never let a child exceed the viewport width (no fixed px widths wider than the container, add \`min-w-0\` to flex/grid children, images \`max-w-full h-auto object-cover\`).
+  • Grids/flex must \`gap-*\` (never rely on margins that collide) and wrap (\`flex-wrap\`) so items never stack on top of each other on small screens; cards keep equal internal padding so text never touches edges.
+  • No element pinned with a fixed/absolute position over the document flow that would cover content on scroll. Spacing comes from padding/gap, not from overlapping translated layers.`

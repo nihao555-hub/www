@@ -257,10 +257,11 @@ OUTPUT RULES (strict):
 
 FIX THESE DEFECTS IF PRESENT (and ONLY these — do not redesign):
 1. CJK/Chinese text collapsing into a narrow one-character-per-line vertical strip. Widen the text column: responsive grid with the text side at least half width, \`min-w-0\` on flex/grid text children, \`min-w-[18rem]\` (or \`basis-1/2\`) on the text column, \`break-words\` (never \`break-all\`), and NEVER \`writing-mode\`/vertical-text/rotation. Prefer a single full-width column over a cramped split.
-2. Content overflow, clipping, squished/deformed layout, or elements escaping their container.
-3. Low-contrast text or buttons — ensure foreground/background meet WCAG AA against the theme tokens.
-4. Any em-dash or en-dash that is visible to the user — replace with a regular hyphen or restructure the sentence.
-5. Broken or empty image references.
+2. Content overflow, clipping, squished/deformed layout, or elements escaping their container (add \`max-w-full\`, \`min-w-0\`, \`object-cover\`, centered \`max-w-6xl mx-auto px-*\` wrapper; never wider than the viewport).
+3. OVERLAPPING elements — text/buttons/images sitting on top of each other or under a decorative layer. Fix by laying content out in normal flow (flex/grid with \`gap-*\`), wrapping real content in \`relative z-10\`, and demoting every decorative \`absolute\` blob/glow to \`pointer-events-none\` inside a \`relative overflow-hidden\` parent with a lower z-index. Remove negative margins / translations that cause collisions.
+4. Low-contrast text or buttons — ensure foreground/background meet WCAG AA against the theme tokens.
+5. Any em-dash or en-dash that is visible to the user — replace with a regular hyphen or restructure the sentence.
+6. Broken or empty image references.
 
 ${TASTE_SKILL_JSX_RULES}
 
@@ -717,7 +718,7 @@ export async function runGeneration(
               typeof heroRef.similarity === 'number' ? ` (match ${heroRef.similarity.toFixed(2)})` : ''
             }. Adapt its structure/composition/motion (see system rules):`,
             '```tsx',
-            (heroRef.demoCode || heroRef.code).slice(0, 3500),
+            heroRef.demoCode || heroRef.code,
             '```',
           ].join('\n')
         : ''
@@ -805,72 +806,89 @@ export async function runGeneration(
         homePage.sections.find((s) => s.kind === 'features' || s.kind === 'stats')
       return donor ?? null
     })()
+    // Collect every section that has a real 21st.dev blueprint, then author the
+    // bespoke JSX for all of them concurrently (each LLM call is independent),
+    // capped at MAX_SECTIONS. This replaces the previous serial await-per-section
+    // loop and cuts the section phase wall-clock roughly to its slowest member.
+    type AuthCandidate = {
+      page: (typeof spec.pages)[number]
+      index: number
+      section: SpecSection
+      ref: NonNullable<ReturnType<typeof findRef>>
+    }
+    const candidates: AuthCandidate[] = []
     for (const page of spec.pages) {
       for (let i = 0; i < page.sections.length; i++) {
-        if (authored >= MAX_SECTIONS) break
+        if (candidates.length >= MAX_SECTIONS) break
         const section = page.sections[i]
         if (section.kind === 'jsx' || !JSXABLE.has(section.kind)) continue
         const ref = findRef(section.kind)
         if (!ref) continue // only convert sections we actually have a 21st blueprint for
-        const refBlock = [
-          '',
-          `REFERENCE COMPONENT — real "${ref.componentName}" code pulled live from 21st.dev via MCP${
-            typeof ref.similarity === 'number' ? ` (match ${ref.similarity.toFixed(2)})` : ''
-          }. Adapt its structure/composition/motion (see system rules):`,
-          '```tsx',
-          (ref.demoCode || ref.code).slice(0, 3500),
-          '```',
-        ].join('\n')
-        const sectionUser = [
-          `This is the "${section.kind}" section of a ${
-            merchant.industry || merchant.name || 'business'
-          } website.`,
-          '',
-          `Theme tokens (use via theme.colors.*): ${JSON.stringify(theme.colors)}`,
-          `Design family vibe: ${design.name} — ${design.description}`,
-          '',
-          'Section copy to render (already written in the target language — bake it in verbatim, do not translate or invent new copy):',
-          JSON.stringify(section, null, 2),
-          refBlock,
-          '',
-          `There are ${reservedTotal} image(s) available as the \`images\` prop (array of URLs).`,
-          'Output ONLY the Section component code now.',
-        ].join('\n')
-        try {
-          const reply = await relayChat([
-            { role: 'system', content: SECTION_JSX_SYSTEM },
-            { role: 'user', content: sectionUser },
-          ])
-          const sectionCode = stripCodeFence(reply)
-          if (compileJsx(sectionCode)) {
-            page.sections[i] = {
-              kind: 'jsx',
-              code: sectionCode,
-              source: `21st:${ref.componentName}`,
-              fallback: section,
-            }
-            authored++
-            emit({
-              type: 'log',
-              message: `Live JSX "${section.kind}" compiled OK (blueprint: ${ref.componentName}) — rendering real component`,
-            })
-          } else {
-            emit({
-              type: 'log',
-              message: `Live JSX "${section.kind}" invalid; keeping templated section`,
-            })
+        candidates.push({ page, index: i, section, ref })
+      }
+      if (candidates.length >= MAX_SECTIONS) break
+    }
+
+    const authorOne = async ({ page, index, section, ref }: AuthCandidate) => {
+      const refBlock = [
+        '',
+        `REFERENCE COMPONENT — real "${ref.componentName}" code pulled live from 21st.dev via MCP${
+          typeof ref.similarity === 'number' ? ` (match ${ref.similarity.toFixed(2)})` : ''
+        }. Adapt its structure/composition/motion (see system rules):`,
+        '```tsx',
+        ref.demoCode || ref.code,
+        '```',
+      ].join('\n')
+      const sectionUser = [
+        `This is the "${section.kind}" section of a ${
+          merchant.industry || merchant.name || 'business'
+        } website.`,
+        '',
+        `Theme tokens (use via theme.colors.*): ${JSON.stringify(theme.colors)}`,
+        `Design family vibe: ${design.name} — ${design.description}`,
+        '',
+        'Section copy to render (already written in the target language — bake it in verbatim, do not translate or invent new copy):',
+        JSON.stringify(section, null, 2),
+        refBlock,
+        '',
+        `There are ${reservedTotal} image(s) available as the \`images\` prop (array of URLs).`,
+        'Output ONLY the Section component code now.',
+      ].join('\n')
+      try {
+        const reply = await relayChat([
+          { role: 'system', content: SECTION_JSX_SYSTEM },
+          { role: 'user', content: sectionUser },
+        ])
+        const sectionCode = stripCodeFence(reply)
+        if (compileJsx(sectionCode)) {
+          page.sections[index] = {
+            kind: 'jsx',
+            code: sectionCode,
+            source: `21st:${ref.componentName}`,
+            fallback: section,
           }
-        } catch (err) {
+          authored++
           emit({
             type: 'log',
-            message: `Live JSX "${section.kind}" failed (${
-              err instanceof Error ? err.message : 'error'
-            }); keeping templated section`,
+            message: `Live JSX "${section.kind}" compiled OK (blueprint: ${ref.componentName}) — rendering real component`,
+          })
+        } else {
+          emit({
+            type: 'log',
+            message: `Live JSX "${section.kind}" invalid; keeping templated section`,
           })
         }
+      } catch (err) {
+        emit({
+          type: 'log',
+          message: `Live JSX "${section.kind}" failed (${
+            err instanceof Error ? err.message : 'error'
+          }); keeping templated section`,
+        })
       }
-      if (authored >= MAX_SECTIONS) break
     }
+
+    await Promise.all(candidates.map(authorOne))
 
     // ---- Signature band: render the distinctive standout component ----------
     let signatureAuthored = false
@@ -881,7 +899,7 @@ export async function runGeneration(
           typeof featuredRef.similarity === 'number' ? ` (match ${featuredRef.similarity.toFixed(2)})` : ''
         }. This is the SIGNATURE / wow component — preserve its animation, interactivity and visual flair (see system rules):`,
         '```tsx',
-        (featuredRef.demoCode || featuredRef.code).slice(0, 3500),
+        featuredRef.demoCode || featuredRef.code,
         '```',
       ].join('\n')
       const signatureUser = [

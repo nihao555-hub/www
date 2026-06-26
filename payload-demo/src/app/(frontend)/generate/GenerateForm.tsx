@@ -52,9 +52,37 @@ type DoneResult = {
   pages?: number
 }
 
+const EXAMPLE_PROMPTS: { emoji: string; title: string; brief: string }[] = [
+  {
+    emoji: '🌿',
+    title: '高端国货护肤',
+    brief:
+      '高端国货护肤品牌「参源」，主打野山参精华抗老精华液，面向 25-40 岁都市女性，要高级、有东方质感、有创新的视觉记忆点。',
+  },
+  {
+    emoji: '☕',
+    title: '精品咖啡品牌',
+    brief:
+      '精品手冲咖啡豆品牌「晨雾」，强调单一产地与浅烘风味，面向咖啡爱好者，风格要温暖、克制、有质感。',
+  },
+  {
+    emoji: '🎧',
+    title: '科技数码新品',
+    brief:
+      '主动降噪无线耳机新品发布站，主打通透音质与超长续航，面向年轻科技人群，要未来感、暗色、强动效。',
+  },
+  {
+    emoji: '🏡',
+    title: '极简家居电商',
+    brief:
+      '北欧极简风家居品牌，主打原木家具与收纳，面向都市小家庭，风格要干净、留白、温润自然。',
+  },
+]
+
 export const GenerateForm: React.FC = () => {
   const [language, setLanguage] = useState('en')
   const [themeId, setThemeId] = useState('auto')
+  const [brief, setBrief] = useState('')
 
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -95,6 +123,7 @@ export const GenerateForm: React.FC = () => {
     setMcpCalls([])
     setMcpToolNames([])
     setLogs([])
+    setBrief('')
   }, [])
 
   const upsertStep = useCallback((s: Step) => {
@@ -244,6 +273,8 @@ export const GenerateForm: React.FC = () => {
   const promptBox = (
     <PromptInputBox
       isLoading={running}
+      value={brief}
+      onValueChange={setBrief}
       placeholder="一句话描述你的业务，并上传商品图，AI 自动生成独立站…"
       languages={LANGUAGES}
       language={language}
@@ -302,18 +333,53 @@ export const GenerateForm: React.FC = () => {
           </a>
         </aside>
 
-        {/* Centered one-line brief */}
-        <main className="flex min-w-0 flex-1 flex-col items-center justify-center gap-5 px-6">
-          <div className="w-full max-w-2xl">
-            <h2 className="mb-5 text-center text-3xl font-semibold tracking-tight">
+        {/* Centered one-line brief + example prompts (ChatGPT-style) */}
+        <main className="flex min-w-0 flex-1 flex-col items-center justify-center gap-6 overflow-auto px-6 py-10">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <div className="flex size-14 items-center justify-center rounded-2xl border border-primary/30 bg-primary/10 shadow-sm">
+              <Sparkles className="size-7 text-primary" />
+            </div>
+            <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
               一句话生成你的独立站
             </h2>
+            <p className="max-w-xl text-sm text-muted-foreground">
+              描述你的品牌与产品并上传商品图，世界级设计 Agent 会自动调研 21st.dev
+              组件、规划版式、撰写文案、批量配图并自我打磨，产出可直接发布的独立站。
+            </p>
+          </div>
+
+          <div className="w-full max-w-2xl">
             {promptBox}
             {error && (
               <div className="mt-3 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
                 {error}
               </div>
             )}
+          </div>
+
+          <div className="w-full max-w-2xl">
+            <p className="mb-2 text-center text-xs text-muted-foreground">试试这些示例</p>
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              {EXAMPLE_PROMPTS.map((ex) => (
+                <button
+                  key={ex.title}
+                  type="button"
+                  onClick={() => setBrief(ex.brief)}
+                  className="group flex items-start gap-3 rounded-xl border border-border bg-card p-3 text-left transition-all hover:border-primary/50 hover:bg-accent hover:shadow-sm"
+                >
+                  <span className="text-xl leading-none">{ex.emoji}</span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">{ex.title}</span>
+                    <span className="line-clamp-2 block text-xs text-muted-foreground">
+                      {ex.brief}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+            <p className="mt-3 text-center text-[11px] text-muted-foreground">
+              提示：点击示例会填入输入框，记得上传一张商品图再点发送。
+            </p>
           </div>
         </main>
       </div>

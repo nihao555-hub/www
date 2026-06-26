@@ -12,6 +12,9 @@ export type PromptTheme = { id: string; label: string }
 export interface PromptInputBoxProps {
   /** Called when the user submits the brief. */
   onSend?: (message: string, files: File[]) => void
+  /** Optional controlled value for the textarea (e.g. filled by example cards). */
+  value?: string
+  onValueChange?: (value: string) => void
   isLoading?: boolean
   placeholder?: string
   className?: string
@@ -35,6 +38,8 @@ export const PromptInputBox = React.forwardRef<HTMLDivElement, PromptInputBoxPro
   (props, ref) => {
     const {
       onSend = () => {},
+      value,
+      onValueChange,
       isLoading = false,
       placeholder = 'Describe your business in one message…',
       className,
@@ -47,7 +52,16 @@ export const PromptInputBox = React.forwardRef<HTMLDivElement, PromptInputBoxPro
       maxImages = 6,
     } = props
 
-    const [input, setInput] = React.useState('')
+    const [internalInput, setInternalInput] = React.useState('')
+    const isControlled = value !== undefined
+    const input = isControlled ? value : internalInput
+    const setInput = React.useCallback(
+      (next: string) => {
+        if (isControlled) onValueChange?.(next)
+        else setInternalInput(next)
+      },
+      [isControlled, onValueChange],
+    )
     const [files, setFiles] = React.useState<File[]>([])
     const [previews, setPreviews] = React.useState<string[]>([])
     const [langOpen, setLangOpen] = React.useState(false)

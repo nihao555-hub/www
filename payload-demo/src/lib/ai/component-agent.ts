@@ -359,7 +359,7 @@ export async function runComponentAgent(
 export function componentRefsForPrompt(refs: ComponentRef[]): string {
   if (!refs.length) return ''
   const blocks = refs.slice(0, 6).map((r) => {
-    const code = (r.demoCode || r.code).slice(0, 1800)
+    const code = (r.demoCode || r.code).slice(0, 8000)
     return `### ${r.section} — ${r.componentName}${
       typeof r.similarity === 'number' ? ` (match ${r.similarity.toFixed(2)})` : ''
     }\n\`\`\`tsx\n${code}\n\`\`\``
