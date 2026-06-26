@@ -71,6 +71,7 @@ export interface Config {
     posts: Post;
     media: Media;
     categories: Category;
+    'ai-sites': AiSite;
     users: User;
     redirects: Redirect;
     forms: Form;
@@ -93,6 +94,7 @@ export interface Config {
     posts: PostsSelect<false> | PostsSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
     categories: CategoriesSelect<false> | CategoriesSelect<true>;
+    'ai-sites': AiSitesSelect<false> | AiSitesSelect<true>;
     users: UsersSelect<false> | UsersSelect<true>;
     redirects: RedirectsSelect<false> | RedirectsSelect<true>;
     forms: FormsSelect<false> | FormsSelect<true>;
@@ -826,6 +828,39 @@ export interface Form {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ai-sites".
+ */
+export interface AiSite {
+  id: number;
+  siteName: string;
+  slug: string;
+  themeId?: string | null;
+  /**
+   * Uploaded product images, ordered to match spec image indexes.
+   */
+  images?:
+    | {
+        image: number | Media;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * The full AI-generated SiteSpec (pages, sections, theme).
+   */
+  spec:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "redirects".
  */
 export interface Redirect {
@@ -1029,6 +1064,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'categories';
         value: number | Category;
+      } | null)
+    | ({
+        relationTo: 'ai-sites';
+        value: number | AiSite;
       } | null)
     | ({
         relationTo: 'users';
@@ -1374,6 +1413,24 @@ export interface CategoriesSelect<T extends boolean = true> {
         label?: T;
         id?: T;
       };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ai-sites_select".
+ */
+export interface AiSitesSelect<T extends boolean = true> {
+  siteName?: T;
+  slug?: T;
+  themeId?: T;
+  images?:
+    | T
+    | {
+        image?: T;
+        id?: T;
+      };
+  spec?: T;
   updatedAt?: T;
   createdAt?: T;
 }

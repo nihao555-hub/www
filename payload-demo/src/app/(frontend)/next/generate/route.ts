@@ -6,7 +6,6 @@ import { getPayload } from 'payload'
 
 import { runGeneration, type GenEvent, type MerchantInput } from '@/lib/ai/generate'
 import { isRelayConfigured } from '@/lib/ai/relay'
-import { specToPageData } from '@/lib/ai/to-payload'
 
 export const maxDuration = 300
 
@@ -99,20 +98,31 @@ export async function POST(req: Request): Promise<Response> {
         // 2) Run the AI design pipeline, streaming progress to the client.
         const spec = await runGeneration(merchant, imageDataUrls, emit, req.signal)
 
-        // 3) Persist the generated page.
-        const pageData = specToPageData(spec, mediaIds)
-        const page = await payload.create({ collection: 'pages', data: pageData })
+        // 3) Persist the generated multi-page site.
+        const site = await payload.create({
+          collection: 'ai-sites',
+          data: {
+            siteName: spec.siteName,
+            slug: spec.slug,
+            themeId: spec.themeId,
+            images: mediaIds.map((id) => ({ image: id })),
+            spec,
+          },
+        })
 
         const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || ''
+        const pageCount = spec.pages.length
+        const sectionCount = spec.pages.reduce((n, p) => n + p.sections.length, 0)
         send('done', {
           success: true,
-          pageId: page.id,
-          slug: page.slug,
+          pageId: site.id,
+          slug: site.slug,
           siteName: spec.siteName,
           themeId: spec.themeId,
-          previewUrl: `${serverUrl}/${page.slug}`,
-          adminUrl: `${serverUrl}/admin/collections/pages/${page.id}`,
-          sections: spec.sections.length,
+          previewUrl: `${serverUrl}/s/${site.slug}`,
+          adminUrl: `${serverUrl}/admin/collections/ai-sites/${site.id}`,
+          pages: pageCount,
+          sections: sectionCount,
         })
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error'

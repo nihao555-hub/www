@@ -1,3 +1,5 @@
+import { ICON_KEYWORDS } from '@/components/AiSite/Icon'
+
 import { extractJson, relayChat, relayChatStream, type ChatMessage } from './relay'
 import { normalizeSiteSpec, type SiteSpec } from './site-spec'
 import { THEMES, DEFAULT_THEME_ID, getTheme, themeCatalogForPrompt } from './themes'
@@ -47,52 +49,69 @@ export type GenEvent =
   | { type: 'inspiration'; components: ComponentInspiration[]; icons: IconResult[] }
   | { type: 'spec'; spec: SiteSpec }
 
-const ANALYSIS_SYSTEM = `You are a senior brand & web designer working at the level of v0 / Lovable.
-You are shown a merchant's product photos and a short brief. Think out loud, briefly, like a designer planning a site:
-1. What does this brand sell, who is the audience, what is the industry?
-2. What visual direction fits (mood, palette, typography feel)?
+const ANALYSIS_SYSTEM = `You are a senior brand & web designer working at the level of v0 / Lovable, specialized in professional B2B independent commerce websites (the kind a sales/export team sends to overseas buyers).
+You are shown a merchant's product photos and a short brief. Think out loud, briefly, like a designer planning a MULTI-PAGE site:
+1. What does this brand sell, who is the B2B audience, what is the industry?
+2. What visual direction fits (mood, palette, typography feel) — it must feel trustworthy, premium and modern, NOT a generic template.
 3. Pick exactly ONE theme id from the catalog below that best matches the brand.
-4. List the 4-7 sections you will build, in order.
+4. Plan FOUR pages — Home, Products, About, Contact — and for each list the sections you will build (use rich sections: features-with-icons, stats, product showcase, gallery, process steps, FAQ, testimonials-as-features, strong CTA, contact details).
 
 Theme catalog (id (mood): when to use):
 {CATALOG}
 
-Keep it concise (a short paragraph + a bullet plan). End with a line exactly like:
+Keep it concise (a short paragraph + a per-page bullet plan). End with a line exactly like:
 THEME: <theme-id>
 Write your analysis in {LANGUAGE}.`
 
-const SPEC_SYSTEM = `You are an expert web designer and brand copywriter for B2B independent commerce sites.
-Using your design analysis and the merchant's product photos, produce the final site as a single JSON object — no markdown, no commentary — matching this TypeScript type:
+const SPEC_SYSTEM = `You are an expert web designer and B2B brand copywriter. Output the final site as a SINGLE JSON object — no markdown, no commentary — matching this TypeScript type:
 
 type SiteSpec = {
   siteName: string
   slug: string
+  tagline: string            // short brand line for the header/footer (3-6 words)
   themeId: string            // MUST be one of the catalog ids below
   themeReason: string        // one short sentence on why this theme fits
-  hero: {
-    impact: "highImpact" | "mediumImpact" | "lowImpact"
-    headline: string
-    subheadline?: string
-    ctas?: { label: string; url: string }[]
-    imageIndex?: number
-  }
-  sections: Array<
-    | { kind: "content"; columns: { size: "oneThird"|"half"|"twoThirds"|"full"; heading?: string; body: string }[] }
-    | { kind: "media"; imageIndex: number; caption?: string }
-    | { kind: "cta"; heading: string; body?: string; cta: { label: string; url: string } }
-  >
+  pages: Array<{
+    path: string             // "" for Home, then "products", "about", "contact"
+    navLabel: string         // nav text for this page
+    hero?: {                 // REQUIRED on Home; optional compact banner elsewhere
+      headline: string
+      subheadline?: string
+      badges?: string[]      // 2-4 short trust badges, e.g. "ISO 9001", "20+ yrs", "OEM/ODM"
+      ctas?: { label: string; url: string }[]   // url like "/products" or "/contact"
+      imageIndex?: number    // 0-based index into the uploaded product images
+    }
+    sections: Array<
+      | { kind: "features"; title?: string; subtitle?: string; items: { icon?: string; title: string; body: string }[] }
+      | { kind: "stats"; title?: string; items: { value: string; label: string }[] }
+      | { kind: "showcase"; title?: string; body?: string; imageIndex: number; bullets?: string[]; cta?: { label: string; url: string }; layout?: "imageLeft" | "imageRight" }
+      | { kind: "gallery"; title?: string; subtitle?: string; imageIndexes: number[] }
+      | { kind: "steps"; title?: string; subtitle?: string; items: { title: string; body: string }[] }
+      | { kind: "faq"; title?: string; items: { q: string; a: string }[] }
+      | { kind: "richtext"; title?: string; paragraphs: string[] }
+      | { kind: "cta"; heading: string; body?: string; cta: { label: string; url: string } }
+      | { kind: "contact"; title?: string; body?: string; email?: string; phone?: string; address?: string; hours?: string }
+    >
+    meta: { title: string; description: string }
+  }>
   meta: { title: string; description: string }
 }
 
 Theme catalog ids you may choose from:
 {CATALOG}
 
+Icon keywords you MUST pick from for every feature/step "icon" field (use the closest match):
+{ICONS}
+
 Rules:
-- Compose 4-7 sections. Mix "content" (multi-column feature grids), "media" (showcase an image), end with a "cta".
-- Write compelling, specific marketing copy (no lorem ipsum, no placeholders) referencing real details from the images.
-- ALL human-readable copy (headline, body, ctas, meta, captions) MUST be written in {LANGUAGE}.
-- imageIndex must be a valid 0-based index into the provided images.
-- The design inspiration notes below come from a real component library — let them raise the quality bar, but still output ONLY the JSON.`
+- Produce EXACTLY four pages in this order: Home (path ""), Products (path "products"), About (path "about"), Contact (path "contact").
+- Home: hero + at least 4 rich sections (e.g. stats, features-with-icons, a showcase, and a closing cta). Products: a compact hero + showcase/gallery/features describing the product range. About: company story (richtext + stats + steps/process). Contact: a contact section with email/phone/address + a short hero.
+- EVERY "features" and "steps" item that can have an icon SHOULD set "icon" to one of the icon keywords above.
+- imageIndex / imageIndexes MUST be valid 0-based indexes into the provided images (there are {IMAGE_COUNT} image(s)). Reuse images across pages as needed.
+- CTA/nav urls should be in-site paths: "/", "/products", "/about", "/contact".
+- Write compelling, specific B2B marketing copy (no lorem ipsum, no placeholders) referencing real details visible in the product photos. Quantify where possible.
+- ALL human-readable copy MUST be written in {LANGUAGE}.
+- Let the design inspiration notes below raise the quality bar, but still output ONLY the JSON.`
 
 function briefText(merchant: MerchantInput, imageCount: number): string {
   return [
@@ -228,7 +247,10 @@ export async function runGeneration(
         .join('\n')}`
     : 'No external component inspiration available; rely on your own taste.'
 
-  const specSystem = SPEC_SYSTEM.replace('{CATALOG}', catalog).replaceAll('{LANGUAGE}', lang)
+  const specSystem = SPEC_SYSTEM.replace('{CATALOG}', catalog)
+    .replace('{ICONS}', ICON_KEYWORDS.join(', '))
+    .replaceAll('{LANGUAGE}', lang)
+    .replaceAll('{IMAGE_COUNT}', String(imageDataUrls.length))
   const specMessages: ChatMessage[] = [
     { role: 'system', content: specSystem },
     {
@@ -260,6 +282,13 @@ export async function runGeneration(
   // The analysis-selected theme wins if the spec omitted/changed it unexpectedly.
   if (!merchant.themeId && pickThemeFromAnalysis(analysis)) {
     spec.themeId = theme.id
+  }
+  // Surface the real 21st.dev icons as a brand/trust strip on the rendered site.
+  if (icons.length) {
+    spec.brandIcons = icons
+      .filter((i) => i.svgUrl)
+      .slice(0, 6)
+      .map((i) => ({ title: i.title, svgUrl: i.svgUrl }))
   }
 
   emit({ type: 'step', key: 'write', label: 'Writing copy & assembling sections', status: 'done' })

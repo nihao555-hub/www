@@ -58,7 +58,7 @@ export async function relayChat(messages: ChatMessage[]): Promise<string> {
       model,
       stream: false,
       messages,
-      max_tokens: 8000,
+      max_tokens: 16000,
     }),
   })
 
@@ -102,7 +102,7 @@ export async function relayChatStream(
       model,
       stream: true,
       messages,
-      max_tokens: 8000,
+      max_tokens: 16000,
     }),
     signal,
   })

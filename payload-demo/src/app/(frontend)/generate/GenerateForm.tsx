@@ -42,6 +42,7 @@ type DoneResult = {
   previewUrl: string
   adminUrl: string
   sections: number
+  pages?: number
 }
 
 const STEP_ORDER = ['upload', 'read', 'plan', 'inspire', 'write']
