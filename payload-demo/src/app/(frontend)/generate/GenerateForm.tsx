@@ -1,10 +1,11 @@
 'use client'
 
 import React, { useCallback, useMemo, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
+import { Loader2, Sparkles } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { PromptInputBox } from '@/components/ui/prompt-input-box'
 import { THEMES } from '@/lib/ai/themes'
 import { AgentWorkflow } from './AgentWorkflow'
@@ -59,6 +60,7 @@ export const GenerateForm: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const [steps, setSteps] = useState<Step[]>([])
   const [analysis, setAnalysis] = useState('')
+  const [plan, setPlan] = useState('')
   const [chosenTheme, setChosenTheme] = useState<{ id: string; name: string } | null>(null)
   const [chosenTemplate, setChosenTemplate] = useState<{ id: string; name: string } | null>(null)
   const [inspiration, setInspiration] = useState<Inspiration | null>(null)
@@ -102,6 +104,7 @@ export const GenerateForm: React.FC = () => {
     setResult(null)
     setSteps([])
     setAnalysis('')
+    setPlan('')
     setChosenTheme(null)
     setChosenTemplate(null)
     setInspiration(null)
@@ -134,6 +137,8 @@ export const GenerateForm: React.FC = () => {
           upsertStep(payload as unknown as Step)
         } else if (event === 'analysis') {
           setAnalysis((prev) => prev + String(payload.delta ?? ''))
+        } else if (event === 'plan') {
+          setPlan((prev) => prev + String(payload.delta ?? ''))
         } else if (event === 'theme') {
           setChosenTheme({ id: String(payload.id), name: String(payload.name) })
         } else if (event === 'template') {
@@ -186,7 +191,7 @@ export const GenerateForm: React.FC = () => {
     }
   }
 
-  const showWorkspace = running || result || steps.length > 0
+  const showWorkspace = running || !!result || steps.length > 0
   const currentStepLabel = useMemo(() => {
     const active = [...steps].reverse().find((s) => s.status === 'active')
     if (active) return active.label
@@ -194,118 +199,152 @@ export const GenerateForm: React.FC = () => {
     return lastDone?.label ?? ''
   }, [steps])
 
-  return (
-    <div className="flex flex-col gap-8">
-      {/* ---- Single-box brief ---- */}
-      <div className="mx-auto w-full max-w-3xl">
-        <h2 className="text-center text-2xl font-semibold tracking-tight">
+  const promptBox = (
+    <PromptInputBox
+      isLoading={running}
+      placeholder="一句话描述你的业务，并上传商品图，AI 自动生成独立站…"
+      languages={LANGUAGES}
+      language={language}
+      onLanguageChange={setLanguage}
+      themes={themeOptions}
+      themeId={themeId}
+      onThemeChange={setThemeId}
+      onSend={handleSend}
+      maxImages={6}
+    />
+  )
+
+  // ---- Idle: minimal one-line brief, centered ----
+  if (!showWorkspace) {
+    return (
+      <div className="mx-auto flex min-h-[60vh] w-full max-w-2xl flex-col justify-center gap-5">
+        <h2 className="text-center text-3xl font-semibold tracking-tight">
           一句话生成你的独立站
         </h2>
-        <p className="mt-2 text-center text-sm text-muted-foreground">
-          把所有需求写进一个输入框（品牌、行业、卖点、目标客户…），上传商品图，AI 自动拆解并生成多页独立站。
-        </p>
-
-        <div className="mt-5">
-          <PromptInputBox
-            isLoading={running}
-            placeholder="例如：我们是恒泰钢管厂，做无缝钢管和镀锌管，面向海外工程采购商，主打 ISO 认证、20 年出口经验、OEM/ODM。整体走工业风、专业可信。"
-            languages={LANGUAGES}
-            language={language}
-            onLanguageChange={setLanguage}
-            themes={themeOptions}
-            themeId={themeId}
-            onThemeChange={setThemeId}
-            onSend={handleSend}
-            maxImages={6}
-          />
-        </div>
-
+        {promptBox}
         {error && (
-          <div className="mt-3 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+          <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
             {error}
           </div>
         )}
       </div>
+    )
+  }
 
-      {/* ---- Live workspace ---- */}
-      {!showWorkspace && (
-        <Card className="flex min-h-[280px] items-center justify-center">
-          <CardContent className="py-16 text-center text-muted-foreground">
-            <p className="text-lg font-medium">实时设计工作台</p>
-            <p className="mt-2 text-sm">
-              在上方输入框描述业务并上传商品图后，左侧会实时显示 AI 设计 agent 的思考过程，右侧实时展示生成的独立站。
-            </p>
+  // ---- Working / done: left 20% rail (status + input), right 80% live preview ----
+  return (
+    <div className="flex h-[calc(100vh-7rem)] min-h-[560px] flex-col gap-4 lg:flex-row">
+      {/* Left rail: agent status (top) + input (bottom) */}
+      <div className="flex w-full flex-col gap-3 lg:w-1/5 lg:min-w-[260px]">
+        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <CardContent className="min-h-0 flex-1 overflow-auto p-4">
+            <AgentWorkflow
+              steps={steps}
+              analysis={analysis}
+              plan={plan}
+              inspiration={inspiration}
+              mcpCalls={mcpCalls}
+              mcpToolNames={mcpToolNames}
+              logs={logs}
+              running={running}
+              chosenTheme={chosenTheme}
+              chosenTemplate={chosenTemplate}
+            />
           </CardContent>
         </Card>
-      )}
 
-      {showWorkspace && (
-        <div className="flex flex-col items-start gap-6 lg:flex-row">
-          {/* Left: real-time agent thinking (ai-elements chain-of-thought) */}
-          <Card className="w-full lg:w-[44%] lg:flex-none">
-            <CardHeader>
-              <CardTitle>设计 Agent 实时思考</CardTitle>
-            </CardHeader>
-            <CardContent className="max-h-[78vh] overflow-auto">
-              <AgentWorkflow
-                steps={steps}
-                analysis={analysis}
-                inspiration={inspiration}
-                mcpCalls={mcpCalls}
-                mcpToolNames={mcpToolNames}
-                logs={logs}
-                running={running}
-                chosenTheme={chosenTheme}
-                chosenTemplate={chosenTemplate}
+        <div>
+          {promptBox}
+          {error && (
+            <div className="mt-2 rounded-md border border-destructive/50 bg-destructive/10 p-2 text-xs text-destructive">
+              {error}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Right: full live independent-site preview */}
+      <Card className="flex min-h-0 w-full flex-col overflow-hidden lg:w-4/5 lg:flex-1">
+        <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+          <AnimatePresence mode="wait">
+            {result ? (
+              <motion.iframe
+                key="preview"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.4 }}
+                src={result.previewUrl}
+                title="preview"
+                className="h-full w-full flex-1 bg-white"
               />
-            </CardContent>
-          </Card>
-
-          {/* Right: live independent-site preview */}
-          <Card className="w-full lg:flex-1 lg:sticky lg:top-6">
-            <CardHeader>
-              <CardTitle>
-                独立站实时预览{result ? ` — ${result.siteName}` : ''}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              <div className="overflow-hidden rounded-lg border border-border">
-                {result ? (
-                  <iframe
-                    src={result.previewUrl}
-                    title="preview"
-                    className="h-[78vh] w-full bg-white"
-                  />
-                ) : (
-                  <div className="flex h-[78vh] flex-col items-center justify-center gap-3 bg-muted/30 text-center text-muted-foreground">
-                    <Loader2 className="size-7 animate-spin text-primary" />
-                    <p className="text-sm font-medium">正在生成你的独立站…</p>
-                    <p className="max-w-xs text-xs">
+            ) : (
+              <motion.div
+                key="loading"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="relative flex h-full flex-1 flex-col items-center justify-center gap-5 overflow-hidden bg-gradient-to-br from-muted/40 via-background to-muted/30 text-center"
+              >
+                {/* animated ambient blobs, synced with the working state */}
+                <motion.div
+                  aria-hidden
+                  className="pointer-events-none absolute -left-24 -top-24 size-72 rounded-full bg-primary/20 blur-3xl"
+                  animate={{ x: [0, 40, 0], y: [0, 30, 0], scale: [1, 1.15, 1] }}
+                  transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+                />
+                <motion.div
+                  aria-hidden
+                  className="pointer-events-none absolute -bottom-24 -right-24 size-80 rounded-full bg-fuchsia-500/15 blur-3xl"
+                  animate={{ x: [0, -30, 0], y: [0, -40, 0], scale: [1, 1.2, 1] }}
+                  transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
+                />
+                <motion.div
+                  className="relative flex size-16 items-center justify-center rounded-2xl border border-primary/30 bg-background/70 shadow-lg backdrop-blur"
+                  animate={{ rotate: [0, 8, -8, 0] }}
+                  transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+                >
+                  <Sparkles className="size-7 text-primary" />
+                </motion.div>
+                <div className="relative flex flex-col items-center gap-2">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Loader2 className="size-4 animate-spin text-primary" />
+                    正在生成你的独立站…
+                  </div>
+                  <AnimatePresence mode="wait">
+                    <motion.p
+                      key={currentStepLabel}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.25 }}
+                      className="max-w-sm text-xs text-muted-foreground"
+                    >
                       {currentStepLabel
                         ? `当前：${currentStepLabel}`
-                        : 'AI 正在读图、规划版式并组装版块，生成完成后这里会实时呈现站点。'}
-                    </p>
-                  </div>
-                )}
-              </div>
-              {result && (
-                <div className="flex flex-wrap gap-3">
-                  <Button asChild>
-                    <a href={result.previewUrl} target="_blank" rel="noreferrer">
-                      新标签页打开
-                    </a>
-                  </Button>
-                  <Button asChild variant="outline">
-                    <a href={result.adminUrl} target="_blank" rel="noreferrer">
-                      在后台编辑
-                    </a>
-                  </Button>
+                        : 'AI 正在读图、规划版式并组装版块…'}
+                    </motion.p>
+                  </AnimatePresence>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {result && (
+            <div className="flex flex-wrap gap-3 border-t border-border p-3">
+              <Button asChild size="sm">
+                <a href={result.previewUrl} target="_blank" rel="noreferrer">
+                  新标签页打开
+                </a>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <a href={result.adminUrl} target="_blank" rel="noreferrer">
+                  在后台编辑
+                </a>
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

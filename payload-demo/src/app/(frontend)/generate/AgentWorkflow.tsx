@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import {
   Brain,
   FileText,
@@ -12,6 +13,7 @@ import {
   Send,
   Sparkles,
   Wand2,
+  Wrench,
 } from 'lucide-react'
 
 import {
@@ -57,7 +59,18 @@ export type WorkflowMcpCall = {
 
 type StepState = 'pending' | 'active' | 'done'
 
-const STEP_ORDER = ['upload', 'parse', 'read', 'plan', 'inspire', 'image', 'write', 'jsx', 'sections'] as const
+const STEP_ORDER = [
+  'upload',
+  'parse',
+  'read',
+  'plan',
+  'inspire',
+  'write',
+  'jsx',
+  'sections',
+  'image',
+  'polish',
+] as const
 type StepKey = (typeof STEP_ORDER)[number]
 
 const STEP_ICONS: Record<StepKey, LucideIcon> = {
@@ -70,6 +83,7 @@ const STEP_ICONS: Record<StepKey, LucideIcon> = {
   write: PencilRuler,
   jsx: Send,
   sections: Sparkles,
+  polish: Wrench,
 }
 
 function fallbackLabel(key: string): string {
@@ -84,14 +98,16 @@ function fallbackLabel(key: string): string {
       return '规划版式与风格'
     case 'inspire':
       return '通过 21st.dev MCP 搜索组件与图标'
-    case 'image':
-      return '用 gpt-image-2 生成场景与装饰图'
     case 'write':
       return '撰写文案与组装版块'
     case 'jsx':
       return '编写实时渲染的 Hero 组件'
     case 'sections':
       return '用 21st 组件编写各版块（实时渲染）'
+    case 'image':
+      return '最后批量生成场景与装饰图'
+    case 'polish':
+      return '自我打磨：修复变形 / 中文竖排 / 溢出等问题'
     default:
       return key
   }
@@ -107,6 +123,7 @@ function cotStatus(state: StepState): 'complete' | 'active' | 'pending' {
 export const AgentWorkflow: React.FC<{
   steps: WorkflowStep[]
   analysis: string
+  plan?: string
   inspiration: WorkflowInspiration | null
   mcpCalls?: WorkflowMcpCall[]
   mcpToolNames?: string[]
@@ -117,6 +134,7 @@ export const AgentWorkflow: React.FC<{
 }> = ({
   steps,
   analysis,
+  plan = '',
   inspiration,
   mcpCalls = [],
   mcpToolNames = [],
@@ -131,14 +149,20 @@ export const AgentWorkflow: React.FC<{
   }
   const labelOf = (key: string) => steps.find((x) => x.key === key)?.label ?? fallbackLabel(key)
 
-  const doneCount = STEP_ORDER.filter((k) => stateOf(k) === 'done').length
+  // Step-by-step reveal: only render steps the agent has actually reached
+  // (emitted at least once), so the chain unfolds live instead of showing the
+  // whole pipeline up front.
+  const revealed = STEP_ORDER.filter((key) => steps.some((s) => s.key === key))
+
+  const doneCount = revealed.filter((k) => stateOf(k) === 'done').length
   const headerTitle = running
-    ? `设计 Agent 思考中… (${doneCount}/${STEP_ORDER.length})`
-    : `设计 Agent 思维链 (${doneCount}/${STEP_ORDER.length})`
+    ? `设计 Agent 思考中… (${doneCount}/${revealed.length || STEP_ORDER.length})`
+    : `设计 Agent 思维链 (${doneCount}/${revealed.length || STEP_ORDER.length})`
 
   const hasInspiration =
     !!inspiration && (inspiration.components.length > 0 || inspiration.icons.length > 0)
   const analysisStreaming = running && stateOf('write') !== 'done' && analysis.length > 0
+  const planStreaming = running && stateOf('inspire') === 'pending' && plan.length > 0
 
   return (
     <ChainOfThought className="max-w-none" defaultOpen>
@@ -150,21 +174,31 @@ export const AgentWorkflow: React.FC<{
       </ChainOfThoughtHeader>
 
       <ChainOfThoughtContent>
-        {STEP_ORDER.map((key) => {
+        <AnimatePresence initial={false}>
+        {revealed.map((key) => {
           const state = stateOf(key)
           const status = cotStatus(state)
 
-          // The "read"/"plan" steps surface the streaming design reasoning.
+          // The "read" step surfaces the streaming design reasoning.
           const showReasoning = key === 'read' && (analysis || running)
-          // The "plan" step surfaces the chosen template + theme chips.
+          // The "plan" step surfaces the chosen template + theme chips and the
+          // streaming BUILD PLAN the agent commits to before building.
           const showPlanChips = key === 'plan' && (chosenTemplate || chosenTheme)
+          const showPlan = key === 'plan' && (plan || running)
           // The "inspire" step nests the live 21st.dev MCP tool calls.
           const showMcp =
             key === 'inspire' && (mcpCalls.length > 0 || mcpToolNames.length > 0 || hasInspiration)
 
           return (
-            <ChainOfThoughtStep
+            <motion.div
               key={key}
+              layout
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.28, ease: 'easeOut' }}
+            >
+            <ChainOfThoughtStep
               icon={STEP_ICONS[key]}
               label={labelOf(key)}
               status={status}
@@ -182,6 +216,17 @@ export const AgentWorkflow: React.FC<{
                     </ChainOfThoughtSearchResult>
                   )}
                 </ChainOfThoughtSearchResults>
+              )}
+
+              {showPlan && (
+                <div className="rounded-lg border bg-card p-3">
+                  <Reasoning isStreaming={planStreaming} defaultOpen>
+                    <ReasoningTrigger>
+                      <LayoutTemplate className="size-4" /> 设计方案 (BUILD PLAN)
+                    </ReasoningTrigger>
+                    <ReasoningContent>{plan || '正在制定建站方案…'}</ReasoningContent>
+                  </Reasoning>
+                </div>
               )}
 
               {showReasoning && (
@@ -283,8 +328,10 @@ export const AgentWorkflow: React.FC<{
                 </div>
               )}
             </ChainOfThoughtStep>
+            </motion.div>
           )
         })}
+        </AnimatePresence>
       </ChainOfThoughtContent>
 
       {/* Raw log stream */}
