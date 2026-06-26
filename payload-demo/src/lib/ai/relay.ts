@@ -150,8 +150,10 @@ export async function relayChatStream(
 }
 
 /**
- * Extracts the first JSON object from a model reply, tolerating markdown code
- * fences and any prose before/after the JSON.
+ * Extracts the first JSON value (object OR array) from a model reply, tolerating
+ * markdown code fences and any prose before/after the JSON. Whichever of `{` or
+ * `[` appears first determines the structure, so array replies (e.g. an image
+ * plan) parse correctly instead of being mangled into invalid JSON.
  */
 export function extractJson(text: string): unknown {
   let candidate = text.trim()
@@ -161,10 +163,20 @@ export function extractJson(text: string): unknown {
     candidate = fenceMatch[1].trim()
   }
 
-  const start = candidate.indexOf('{')
-  const end = candidate.lastIndexOf('}')
-  if (start !== -1 && end !== -1 && end > start) {
-    candidate = candidate.slice(start, end + 1)
+  const objStart = candidate.indexOf('{')
+  const arrStart = candidate.indexOf('[')
+  const useArray = arrStart !== -1 && (objStart === -1 || arrStart < objStart)
+
+  if (useArray) {
+    const end = candidate.lastIndexOf(']')
+    if (end > arrStart) {
+      candidate = candidate.slice(arrStart, end + 1)
+    }
+  } else if (objStart !== -1) {
+    const end = candidate.lastIndexOf('}')
+    if (end > objStart) {
+      candidate = candidate.slice(objStart, end + 1)
+    }
   }
 
   return JSON.parse(candidate)

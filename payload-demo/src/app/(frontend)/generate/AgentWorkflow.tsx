@@ -44,7 +44,7 @@ export type WorkflowMcpCall = {
 
 type StepState = 'pending' | 'active' | 'done'
 
-const STEP_ORDER = ['upload', 'parse', 'read', 'plan', 'inspire', 'write', 'jsx'] as const
+const STEP_ORDER = ['upload', 'parse', 'read', 'plan', 'inspire', 'image', 'write', 'jsx'] as const
 
 function fallbackLabel(key: string): string {
   switch (key) {
@@ -58,6 +58,8 @@ function fallbackLabel(key: string): string {
       return '规划版式与风格'
     case 'inspire':
       return '搜索 21st.dev 组件与图标'
+    case 'image':
+      return '用 gpt-image-2 生成场景与装饰图'
     case 'write':
       return '撰写文案与组装版块'
     case 'jsx':
