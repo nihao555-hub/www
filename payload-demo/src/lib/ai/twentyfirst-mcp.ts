@@ -13,7 +13,9 @@
  * via `serverExternalPackages` in `next.config.ts`.
  */
 
+import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { join } from 'node:path'
 
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 
@@ -65,6 +67,26 @@ function readToolText(result: unknown): string {
     .join('\n')
 }
 
+const MAGIC_SERVER_SUBPATH = '@21st-dev/magic/dist/index.js'
+
+/**
+ * Resolves the on-disk path to the Magic MCP server entry. Under Turbopack/
+ * webpack, `require.resolve` is rewritten to a bundler-virtual path (e.g.
+ * `.../[project]/...[app-route] (ecmascript)`) which is NOT a real file, so
+ * spawning `node <that path>` fails with "Connection closed". We therefore
+ * resolve against the real filesystem first and only fall back to
+ * `require.resolve` when nothing is found on disk.
+ */
+function resolveMagicServerPath(): string {
+  const candidates = [
+    join(process.cwd(), 'node_modules', '@21st-dev', 'magic', 'dist', 'index.js'),
+  ]
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate
+  }
+  return createRequire(import.meta.url).resolve(MAGIC_SERVER_SUBPATH)
+}
+
 /** Connect to a freshly spawned Magic MCP server over stdio. */
 async function connect(): Promise<{ client: Client; close: () => Promise<void> }> {
   const apiKey = getTwentyFirstKey()
@@ -73,8 +95,7 @@ async function connect(): Promise<{ client: Client; close: () => Promise<void> }
   const { Client } = await import('@modelcontextprotocol/sdk/client/index.js')
   const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js')
 
-  const require = createRequire(import.meta.url)
-  const serverPath = require.resolve('@21st-dev/magic/dist/index.js')
+  const serverPath = resolveMagicServerPath()
 
   const transport = new StdioClientTransport({
     command: process.execPath,
