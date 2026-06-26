@@ -26,7 +26,10 @@ const nextConfig: NextConfig = {
         pathname: '/api/media/file/**',
       },
     ],
-    qualities: [100],
+    // Allow the next/image default quality (75) in addition to 100 so generated
+    // sites that render <Image> without an explicit quality prop are not served
+    // a 400 by the optimizer.
+    qualities: [75, 100],
     remotePatterns: [
       ...[NEXT_PUBLIC_SERVER_URL /* 'https://example.com' */].map((item) => {
         const url = new URL(item)
