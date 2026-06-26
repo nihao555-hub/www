@@ -22,11 +22,24 @@ import {
   ToolInput,
   ToolOutput,
 } from '@/components/ai-elements/tool'
+import { CodeBlock } from '@/components/ai-elements/code-block'
 
 export type WorkflowStep = { key: string; label: string; status: 'active' | 'done' }
 export type WorkflowInspiration = {
   components: { name: string; summary?: string }[]
   icons: { title: string; svgUrl: string }[]
+}
+export type WorkflowMcpCall = {
+  id: number
+  round: number
+  tool: 'component_inspiration' | 'logo_search'
+  section?: string
+  query: string
+  status: 'running' | 'done' | 'error'
+  resultCount?: number
+  componentName?: string
+  similarity?: number
+  codePreview?: string
 }
 
 type StepState = 'pending' | 'active' | 'done'
@@ -62,11 +75,23 @@ export const AgentWorkflow: React.FC<{
   steps: WorkflowStep[]
   analysis: string
   inspiration: WorkflowInspiration | null
+  mcpCalls?: WorkflowMcpCall[]
+  mcpToolNames?: string[]
   logs: string[]
   running: boolean
   chosenTheme: { id: string; name: string } | null
   chosenTemplate: { id: string; name: string } | null
-}> = ({ steps, analysis, inspiration, logs, running, chosenTheme, chosenTemplate }) => {
+}> = ({
+  steps,
+  analysis,
+  inspiration,
+  mcpCalls = [],
+  mcpToolNames = [],
+  logs,
+  running,
+  chosenTheme,
+  chosenTemplate,
+}) => {
   const stateOf = (key: string): StepState => {
     const s = steps.find((x) => x.key === key)
     return (s?.status as StepState) ?? 'pending'
@@ -139,15 +164,95 @@ export const AgentWorkflow: React.FC<{
         </div>
       )}
 
-      {/* 21st.dev tool call */}
+      {/* 21st.dev Magic MCP — live multi-round tool calls */}
+      {(mcpCalls.length > 0 || mcpToolNames.length > 0) && (
+        <div className="flex flex-col gap-2 rounded-lg border bg-card p-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Sparkles className="size-4 text-primary" />
+            <span>21st.dev Magic MCP · 多轮 tool-call</span>
+          </div>
+          {mcpToolNames.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              MCP server 工具：{mcpToolNames.map((t) => `\`${t}\``).join('、')}
+            </p>
+          )}
+          {mcpCalls.map((call) => {
+            const callState =
+              call.status === 'done'
+                ? 'output-available'
+                : call.status === 'error'
+                  ? 'output-error'
+                  : 'input-available'
+            const title =
+              call.tool === 'logo_search'
+                ? `logo_search · ${call.query}`
+                : `component_inspiration · ${call.section ?? ''} · "${call.query}"`
+            return (
+              <Tool key={call.id} defaultOpen={!!call.codePreview}>
+                <ToolHeader
+                  type="dynamic-tool"
+                  toolName={call.tool}
+                  state={callState}
+                  title={`#${call.round} ${title}`}
+                />
+                <ToolContent>
+                  <ToolInput
+                    input={{
+                      tool:
+                        call.tool === 'logo_search'
+                          ? 'logo_search'
+                          : '21st_magic_component_inspiration',
+                      section: call.section,
+                      searchQuery: call.query,
+                    }}
+                  />
+                  {call.status !== 'running' && (
+                    <ToolOutput
+                      errorText={call.status === 'error' ? 'MCP 调用失败' : undefined}
+                      output={
+                        <div className="flex flex-col gap-2 p-3">
+                          <div className="text-sm">
+                            {call.componentName ? (
+                              <span className="font-medium">{call.componentName}</span>
+                            ) : (
+                              <span className="text-muted-foreground">
+                                {call.resultCount ?? 0} 个结果
+                              </span>
+                            )}
+                            {typeof call.similarity === 'number' && (
+                              <span className="text-muted-foreground">
+                                {' '}
+                                （匹配度 {call.similarity.toFixed(2)}）
+                              </span>
+                            )}
+                          </div>
+                          {call.codePreview && (
+                            <CodeBlock
+                              code={call.codePreview}
+                              language="tsx"
+                              className="max-h-72 overflow-auto"
+                            />
+                          )}
+                        </div>
+                      }
+                    />
+                  )}
+                </ToolContent>
+              </Tool>
+            )
+          })}
+        </div>
+      )}
+
+      {/* 21st.dev inspiration summary (icons + component names) */}
       {(inspireState !== 'pending' || hasInspiration) && (
         <Tool defaultOpen={hasInspiration}>
-          <ToolHeader type="dynamic-tool" toolName="21st.dev_search" state={toolState} title="21st.dev 组件与图标搜索" />
+          <ToolHeader type="dynamic-tool" toolName="21st.dev_search" state={toolState} title="21st.dev 组件与图标汇总" />
           <ToolContent>
             <ToolInput
               input={{
-                source: 'magic.21st.dev',
-                searches: ['hero section', 'features grid', 'call to action', 'brand icons (svgl)'],
+                source: 'magic.21st.dev (MCP)',
+                tools: mcpToolNames.length ? mcpToolNames : ['component_inspiration', 'logo_search'],
               }}
             />
             {hasInspiration && (
