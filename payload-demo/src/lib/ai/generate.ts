@@ -31,6 +31,8 @@ import {
   defaultImageMap,
   TEMPLATE_CONTENT_SCHEMA,
   DEFAULT_LANDING_TEMPLATE_ID,
+  AUTO_LANDING_TEMPLATE_ID,
+  landingTemplateCatalogForPrompt,
   type TemplateContent,
   type LandingTemplate,
 } from './site-templates'
@@ -1056,6 +1058,82 @@ Write copy like a world-class brand copywriter: specific, confident, benefit-led
 
 ${TEMPLATE_CONTENT_SCHEMA}`
 
+/**
+ * Smart-match: ask the model to read the brief (+ any product images) and pick
+ * the single best-fitting curated template from the catalog. Returns the chosen
+ * `LandingTemplate`, falling back to the default if the reply is unusable.
+ */
+async function pickTemplateForBrief(
+  merchant: MerchantInput,
+  imageDataUrls: string[],
+  emit: EmitFn,
+): Promise<LandingTemplate> {
+  const lang = languageLabel(merchant.language)
+  const fallback = getLandingTemplate(DEFAULT_LANDING_TEMPLATE_ID)
+  if (!fallback) {
+    throw new Error('No landing templates are available')
+  }
+  emit({ type: 'step', key: 'match', label: 'Matching the best template for your brand', status: 'active' })
+
+  const system = `${AGENT_ROLE}
+
+You are choosing the single best-fitting landing-page template for a business, from a fixed catalog. Judge by the brand's industry, audience, product type and the desired vibe. Match e-commerce/D2C brands to storefront templates, software/tools to SaaS templates, agencies/creatives to portfolio/studio templates, manufacturers/services to industrial templates, etc. Prefer the template whose category and intent most closely fit.
+
+Catalog (id — name (category): intent):
+${landingTemplateCatalogForPrompt()}
+
+Output ONLY a JSON object: {"id": "<one template id from the catalog>", "reason": "<one short sentence, in ${lang}>"}.`
+
+  const user: ChatMessage = {
+    role: 'user',
+    content: [
+      {
+        type: 'text',
+        text: [
+          briefText(merchant, imageDataUrls.length),
+          '',
+          `Pick the best template id from the catalog above. Reply in ${lang}. Output ONLY the JSON object.`,
+        ].join('\n'),
+      },
+      ...imageParts(imageDataUrls),
+    ],
+  }
+
+  let chosen = fallback
+  try {
+    const reply = await relayChat([{ role: 'system', content: system }, user])
+    const parsed = extractJson(reply) as Record<string, unknown> | null
+    const id = parsed && typeof parsed.id === 'string' ? parsed.id.trim() : ''
+    const match = getLandingTemplate(id)
+    if (match) {
+      chosen = match
+      const reason =
+        parsed && typeof parsed.reason === 'string' ? parsed.reason.trim() : ''
+      emit({
+        type: 'log',
+        message: reason
+          ? `AI 智能匹配：选用「${match.name}」模板 — ${reason}`
+          : `AI 智能匹配：选用「${match.name}」模板`,
+      })
+    } else {
+      emit({
+        type: 'log',
+        message: `智能匹配未返回有效模板，回退到「${chosen.name}」`,
+      })
+    }
+  } catch (err) {
+    emit({
+      type: 'log',
+      message: `智能匹配失败（${
+        err instanceof Error ? err.message : 'error'
+      }），回退到「${chosen.name}」`,
+    })
+  }
+
+  emit({ type: 'step', key: 'match', label: 'Matching the best template for your brand', status: 'done' })
+  return chosen
+}
+
 /** A landing-template image slot queued for gpt-image-2 generation. */
 type ResolvedSlot = { key: string; prompt: ImagePlanItem }
 
@@ -1109,14 +1187,6 @@ export async function runTemplateGeneration(
   signal?: AbortSignal,
 ): Promise<GenerationResult> {
   const lang = languageLabel(merchant.language)
-  const template =
-    getLandingTemplate(merchant.landingTemplateId) ??
-    getLandingTemplate(DEFAULT_LANDING_TEMPLATE_ID)
-  if (!template) {
-    throw new Error('No landing templates are available')
-  }
-  const theme = getTheme(template.themeId)
-  emit({ type: 'template', id: template.id, name: template.name })
 
   // ---- Phase 0: split the free-text brief into structured fields ----------
   if (merchant.brief?.trim() && !(merchant.name && merchant.industry && merchant.description)) {
@@ -1124,6 +1194,20 @@ export async function runTemplateGeneration(
     merchant = await splitBrief(merchant)
     emit({ type: 'step', key: 'parse', label: 'Understanding your brief', status: 'done' })
   }
+
+  // ---- Resolve the template: explicit pick, or AI smart-match -------------
+  const wantsAutoMatch =
+    !merchant.landingTemplateId ||
+    merchant.landingTemplateId === AUTO_LANDING_TEMPLATE_ID
+  const explicit = wantsAutoMatch ? undefined : getLandingTemplate(merchant.landingTemplateId)
+  const template = wantsAutoMatch
+    ? await pickTemplateForBrief(merchant, imageDataUrls, emit)
+    : explicit ?? getLandingTemplate(DEFAULT_LANDING_TEMPLATE_ID)
+  if (!template) {
+    throw new Error('No landing templates are available')
+  }
+  const theme = getTheme(template.themeId)
+  emit({ type: 'template', id: template.id, name: template.name })
 
   // ---- Phase 1: write the template content (copy + icon names) -------------
   emit({

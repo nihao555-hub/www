@@ -89,7 +89,8 @@ export const GenerateForm: React.FC<{ templates?: LandingTemplateMeta[] }> = ({
   const [themeId, setThemeId] = useState('auto')
   const [brief, setBrief] = useState('')
   const [mode, setMode] = useState<GenMode>('creative')
-  const [templateId, setTemplateId] = useState<string | null>(templates[0]?.id ?? null)
+  // 'auto' = let the AI smart-match the best template from the brief.
+  const [templateId, setTemplateId] = useState<string | null>('auto')
 
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -425,9 +426,41 @@ export const GenerateForm: React.FC<{ templates?: LandingTemplateMeta[] }> = ({
           ) : (
             <div className="w-full max-w-3xl">
               <p className="mb-2 text-center text-xs text-muted-foreground">
-                选择一个模板（{templates.length} 个 · 均来自高 star 开源项目）
+                让 AI 智能匹配，或手动选一个模板（{templates.length} 个 · 均来自高 star 开源项目）
               </p>
               <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                {(() => {
+                  const selected = templateId === 'auto'
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => setTemplateId('auto')}
+                      className={`group relative flex flex-col gap-1.5 rounded-xl border p-3 text-left transition-all hover:shadow-sm ${
+                        selected
+                          ? 'border-primary bg-primary/5 shadow-sm'
+                          : 'border-dashed border-primary/40 bg-card hover:border-primary/60 hover:bg-accent'
+                      }`}
+                    >
+                      {selected && (
+                        <span className="absolute right-2 top-2 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                          <Check className="size-3" />
+                        </span>
+                      )}
+                      <span className="flex items-center gap-1.5">
+                        <Sparkles className="size-4 text-primary" />
+                        <span className="block text-sm font-semibold">AI 智能匹配</span>
+                      </span>
+                      <span className="block text-[11px] font-medium text-primary/80">推荐 · 自动选模板</span>
+                      <span className="line-clamp-2 block text-xs text-muted-foreground">
+                        只写一句话，AI 读懂你的行业与调性，从模板库里自动挑最契合的那一个。
+                      </span>
+                      <span className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <Wand2 className="size-3 text-primary/70" />
+                        无需手动挑选
+                      </span>
+                    </button>
+                  )
+                })()}
                 {templates.map((tpl) => {
                   const selected = templateId === tpl.id
                   return (

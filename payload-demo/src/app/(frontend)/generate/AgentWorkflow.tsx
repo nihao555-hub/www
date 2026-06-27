@@ -61,32 +61,39 @@ export type WorkflowMcpCall = {
 
 type StepState = 'pending' | 'active' | 'done'
 
-const STEP_ORDER = [
-  'upload',
-  'parse',
-  'read',
-  'plan',
-  'inspire',
-  'write',
-  'jsx',
-  'sections',
-  'image',
-  'polish',
-] as const
-type StepKey = (typeof STEP_ORDER)[number]
+// Known step keys across both modes. `revealed` is derived from the actual
+// emission order (not this list), so creative- and template-mode steps each
+// unfold in their own correct order; this just types the icon/label maps.
+type StepKey =
+  | 'upload'
+  | 'parse'
+  | 'read'
+  | 'match'
+  | 'plan'
+  | 'inspire'
+  | 'fill'
+  | 'write'
+  | 'jsx'
+  | 'sections'
+  | 'image'
+  | 'polish'
 
-const STEP_ICONS: Record<StepKey, LucideIcon> = {
+const STEP_ICONS: Record<string, LucideIcon> = {
   upload: Images,
   parse: FileText,
   read: ImageIcon,
+  match: Wand2,
   plan: LayoutTemplate,
   inspire: Sparkles,
+  fill: PencilRuler,
   image: Wand2,
   write: PencilRuler,
   jsx: Send,
   sections: Sparkles,
   polish: Wrench,
 }
+
+const stepIcon = (key: string): LucideIcon => STEP_ICONS[key] ?? Sparkles
 
 function fallbackLabel(key: string): string {
   switch (key) {
@@ -96,10 +103,14 @@ function fallbackLabel(key: string): string {
       return '理解你的需求'
     case 'read':
       return '读取商品图'
+    case 'match':
+      return 'AI 智能匹配最契合的模板'
     case 'plan':
       return '规划版式与风格'
     case 'inspire':
       return '通过 21st.dev MCP 搜索组件与图标'
+    case 'fill':
+      return '为模板撰写品牌文案'
     case 'write':
       return '撰写文案与组装版块'
     case 'jsx':
@@ -152,6 +163,9 @@ function cotStatus(state: StepState): 'complete' | 'active' | 'pending' {
 function logStepKey(log: string): StepKey | null {
   const l = log.toLowerCase().trim()
   if (l.startsWith('brand:') || l.startsWith('industry:')) return 'parse'
+  if (l.startsWith('ai 智能匹配') || l.startsWith('智能匹配')) return 'match'
+  if (l.startsWith('template:') || l.startsWith('generated on-brand') || l.includes('copy generation'))
+    return 'fill'
   if (l.includes('analyzing') && l.includes('image')) return 'read'
   if (
     l.startsWith('starting from template') ||
@@ -238,15 +252,18 @@ export const AgentWorkflow: React.FC<{
     return (t.end ?? now) - t.start
   }
 
-  // Step-by-step reveal: only render steps the agent has actually reached
-  // (emitted at least once), so the chain unfolds live instead of showing the
-  // whole pipeline up front.
-  const revealed = STEP_ORDER.filter((key) => steps.some((s) => s.key === key))
+  // Step-by-step reveal: render steps in the order the agent actually emitted
+  // them (deduplicated), so the chain unfolds live and both creative- and
+  // template-mode pipelines show in their own correct order.
+  const revealed: string[] = []
+  for (const s of steps) {
+    if (!revealed.includes(s.key)) revealed.push(s.key)
+  }
 
   const doneCount = revealed.filter((k) => stateOf(k) === 'done').length
   const headerTitle = running
-    ? `设计 Agent 思考中… (${doneCount}/${revealed.length || STEP_ORDER.length})`
-    : `设计 Agent 思维链 (${doneCount}/${revealed.length || STEP_ORDER.length})`
+    ? `设计 Agent 思考中… (${doneCount}/${revealed.length || 1})`
+    : `设计 Agent 思维链 (${doneCount}/${revealed.length || 1})`
 
   const hasInspiration =
     !!inspiration && (inspiration.components.length > 0 || inspiration.icons.length > 0)
@@ -256,9 +273,9 @@ export const AgentWorkflow: React.FC<{
   // Bucket each progress log under the step it belongs to. Anything that does
   // not map cleanly is attached to the currently-active step so nothing is lost.
   const activeKey = [...revealed].reverse().find((k) => stateOf(k) === 'active') ?? revealed.at(-1)
-  const logBuckets: Partial<Record<StepKey, string[]>> = {}
+  const logBuckets: Record<string, string[]> = {}
   for (const line of logs) {
-    const key = (logStepKey(line) ?? activeKey) as StepKey | undefined
+    const key = logStepKey(line) ?? activeKey
     if (!key) continue
     ;(logBuckets[key] ??= []).push(line)
   }
@@ -281,9 +298,10 @@ export const AgentWorkflow: React.FC<{
 
           // The "read" step surfaces the streaming design reasoning.
           const showReasoning = key === 'read' && (analysis || running)
-          // The "plan" step surfaces the chosen template + theme chips and the
-          // streaming BUILD PLAN the agent commits to before building.
-          const showPlanChips = key === 'plan' && (chosenTemplate || chosenTheme)
+          // The "plan" step (creative) and "match" step (template) surface the
+          // chosen template + theme chips; "plan" also streams the BUILD PLAN.
+          const showPlanChips =
+            (key === 'plan' || key === 'match') && (chosenTemplate || chosenTheme)
           const showPlan = key === 'plan' && (plan || running)
           // The "inspire" step nests the live 21st.dev MCP tool calls.
           const showMcp =
@@ -300,7 +318,7 @@ export const AgentWorkflow: React.FC<{
               transition={{ duration: 0.28, ease: 'easeOut' }}
             >
             <ChainOfThoughtStep
-              icon={STEP_ICONS[key]}
+              icon={stepIcon(key)}
               label={
                 <span className="flex items-center justify-between gap-2">
                   <span>{labelOf(key)}</span>
