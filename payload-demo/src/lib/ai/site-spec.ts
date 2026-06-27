@@ -75,7 +75,16 @@ export type SpecSection =
    * fallback. `fallback`, when present, is a normal section rendered if the JSX
    * fails to compile or throws.
    */
-  | { kind: 'jsx'; code: string; source?: string; fallback?: SpecSection }
+  | {
+      kind: 'jsx'
+      code: string
+      source?: string
+      fallback?: SpecSection
+      /** structured content passed to the compiled component as a `content`
+       * prop. Used by template-mode pages where the JSX layout is fixed and the
+       * agent only fills copy/image-index data. */
+      content?: Record<string, unknown>
+    }
 
 export type SpecPage = {
   /** url path under the site; '' is the home page */
@@ -115,6 +124,14 @@ export type SiteSpec = {
   themeReason?: string
   /** id of the design family (layout DNA) the AI picked for this brand */
   designId?: string
+  /**
+   * Page chrome mode. 'default' (or undefined) renders the themed Header/Footer
+   * around the page. 'none' is used by template-mode sites whose JSX provides
+   * its own full-bleed nav/footer, so the renderer skips its own chrome.
+   */
+  chrome?: 'default' | 'none'
+  /** id of the landing template used (template mode); undefined for creative mode */
+  templateRef?: string
   /**
    * Route 2 — real JSX for the home hero, authored by the AI using brand copy +
    * theme tokens and rendered live in a sandbox. Falls back to the templated
@@ -278,11 +295,16 @@ function normalizeSection(value: unknown): SpecSection | null {
       const code = asString(s.code)
       if (!code) return null
       const fallback = normalizeSection(s.fallback)
+      const content =
+        s.content && typeof s.content === 'object' && !Array.isArray(s.content)
+          ? (s.content as Record<string, unknown>)
+          : undefined
       return {
         kind: 'jsx',
         code,
         source: asString(s.source) || undefined,
         fallback: fallback || undefined,
+        content,
       }
     }
     case 'contact': {
@@ -301,7 +323,12 @@ function normalizeSection(value: unknown): SpecSection | null {
   }
 }
 
-function normalizePage(value: unknown, index: number, siteName: string): SpecPage | null {
+function normalizePage(
+  value: unknown,
+  index: number,
+  siteName: string,
+  chromeless = false,
+): SpecPage | null {
   if (!value || typeof value !== 'object') return null
   const p = value as Record<string, unknown>
   const sections = (Array.isArray(p.sections) ? p.sections : [])
@@ -313,7 +340,10 @@ function normalizePage(value: unknown, index: number, siteName: string): SpecPag
   const navLabel = asString(p.navLabel) || asString(p.path) || (index === 0 ? 'Home' : `Page ${index}`)
 
   const heroProvided = p.hero && typeof p.hero === 'object'
-  const hero = heroProvided || index === 0 ? normalizeHero(p.hero, navLabel) : undefined
+  // Chromeless (template-mode) pages render their own hero inside the JSX, so
+  // we never synthesize a templated hero for them.
+  const hero =
+    !chromeless && (heroProvided || index === 0) ? normalizeHero(p.hero, navLabel) : undefined
 
   const metaRaw = (p.meta && typeof p.meta === 'object' ? p.meta : {}) as Record<string, unknown>
   const meta = {
@@ -356,11 +386,15 @@ export function normalizeSiteSpec(
       ? requestedDesign
       : fallbackDesignId
 
+  const chrome = obj.chrome === 'none' ? 'none' : undefined
+  const chromeless = chrome === 'none'
+  const templateRef = asString(obj.templateRef) || undefined
+
   // Build pages: prefer the new `pages` array, else wrap legacy single-page.
   let pages: SpecPage[] = []
   if (Array.isArray(obj.pages) && obj.pages.length) {
     pages = obj.pages
-      .map((p, i) => normalizePage(p, i, siteName))
+      .map((p, i) => normalizePage(p, i, siteName, chromeless))
       .filter(Boolean) as SpecPage[]
   }
   if (!pages.length) {
@@ -368,6 +402,7 @@ export function normalizeSiteSpec(
       { path: '', navLabel: 'Home', hero: obj.hero, sections: obj.sections, meta: obj.meta },
       0,
       siteName,
+      chromeless,
     )
     if (legacy) pages = [legacy]
   }
@@ -378,15 +413,16 @@ export function normalizeSiteSpec(
       {
         path: '',
         navLabel: 'Home',
-        hero: normalizeHero(undefined, siteName),
+        hero: chromeless ? undefined : normalizeHero(undefined, siteName),
         sections: [],
         meta: { title: siteName, description: siteName },
       },
     ]
   }
-  // Force first page to be the home page and ensure it has a hero.
+  // Force first page to be the home page and ensure it has a hero (unless the
+  // page is a chromeless template that renders its own hero in JSX).
   pages[0].path = ''
-  if (!pages[0].hero) pages[0].hero = normalizeHero(undefined, siteName)
+  if (!chromeless && !pages[0].hero) pages[0].hero = normalizeHero(undefined, siteName)
 
   // Deduplicate paths/labels for safe routing & nav.
   const seenPaths = new Set<string>()
@@ -410,6 +446,8 @@ export function normalizeSiteSpec(
     themeId,
     themeReason: asString(obj.themeReason) || undefined,
     designId,
+    chrome,
+    templateRef,
     pages,
     meta: {
       title: asString(metaRaw.title, siteName) || siteName,

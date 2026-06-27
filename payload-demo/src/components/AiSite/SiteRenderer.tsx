@@ -192,17 +192,20 @@ export const SiteRenderer: React.FC<Props> = ({ spec, images }) => {
     ['--radius' as string]: theme.radius,
   }
   const headingFont = `'${theme.fonts.heading}', system-ui, sans-serif`
+  const chromeless = spec.chrome === 'none'
 
   return (
     <DesignContext.Provider value={design}>
       <div style={wrapStyle} className="min-h-screen w-full antialiased">
-        <Header
-          spec={spec}
-          theme={theme}
-          active={page.path}
-          onNav={go}
-          headingFont={headingFont}
-        />
+        {!chromeless && (
+          <Header
+            spec={spec}
+            theme={theme}
+            active={page.path}
+            onNav={go}
+            headingFont={headingFont}
+          />
+        )}
 
         <main>
           {page.hero ? (
@@ -253,11 +256,18 @@ export const SiteRenderer: React.FC<Props> = ({ spec, images }) => {
               theme={theme}
               headingFont={headingFont}
               onCta={onCta}
+              pageNav={{
+                path: page.path,
+                go,
+                pages: spec.pages.map((p) => ({ path: p.path, navLabel: p.navLabel })),
+              }}
             />
           ))}
         </main>
 
-        <Footer spec={spec} theme={theme} onNav={go} headingFont={headingFont} />
+        {!chromeless && (
+          <Footer spec={spec} theme={theme} onNav={go} headingFont={headingFont} />
+        )}
       </div>
     </DesignContext.Provider>
   )
@@ -758,7 +768,10 @@ const SectionView: React.FC<{
   theme: ReturnType<typeof getTheme>
   headingFont: string
   onCta: (e: React.MouseEvent, url: string) => void
-}> = ({ section, images, theme, headingFont, onCta }) => {
+  /** cross-page navigation handed to template JSX so its own nav/footer can
+   * switch between the site's real pages (template mode is chromeless). */
+  pageNav?: { path: string; go: (path: string) => void; pages: { path: string; navLabel: string }[] }
+}> = ({ section, images, theme, headingFont, onCta, pageNav }) => {
   switch (section.kind) {
     case 'features':
       return <Features section={section} theme={theme} headingFont={headingFont} />
@@ -788,21 +801,37 @@ const SectionView: React.FC<{
       return <Contact section={section} theme={theme} headingFont={headingFont} />
     case 'jsx':
       return (
-        <DynamicComponentRenderer
-          code={section.code}
-          componentProps={{ theme, images }}
-          fallback={
-            section.fallback ? (
-              <SectionView
-                section={section.fallback}
-                images={images}
-                theme={theme}
-                headingFont={headingFont}
-                onCta={onCta}
-              />
-            ) : null
-          }
-        />
+        <div
+          onClickCapture={(e) => {
+            // Template JSX (chromeless multi-page) renders its own nav/footer/CTA
+            // anchors. Intercept clicks on in-site links so they switch pages via
+            // the client router instead of doing a hard navigation to a 404.
+            if (!pageNav) return
+            const anchor = (e.target as HTMLElement)?.closest?.('a')
+            if (!anchor) return
+            const path = urlToPath(anchor.getAttribute('href') || '')
+            if (path === null) return
+            e.preventDefault()
+            const exists = pageNav.pages.some((p) => p.path === path)
+            pageNav.go(exists ? path : '')
+          }}
+        >
+          <DynamicComponentRenderer
+            code={section.code}
+            componentProps={{ theme, images, content: section.content, pageNav }}
+            fallback={
+              section.fallback ? (
+                <SectionView
+                  section={section.fallback}
+                  images={images}
+                  theme={theme}
+                  headingFont={headingFont}
+                  onCta={onCta}
+                />
+              ) : null
+            }
+          />
+        </div>
       )
     default:
       return null

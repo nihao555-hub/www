@@ -6,9 +6,22 @@ import {
   imageUrlToDataUrl,
   isImageGenConfigured,
 } from './image-gen'
-import { extractJson, relayChat, relayChatStream, type ChatMessage } from './relay'
+import { extractJson, relayChat, relayChatJson, relayChatStream, type ChatMessage } from './relay'
 import { normalizeSiteSpec, type SiteSpec, type SpecSection } from './site-spec'
 import { AGENT_ROLE, TASTE_SKILL_GUIDE, TASTE_SKILL_JSX_RULES } from './taste-skill'
+import {
+  DESIGN_STYLES,
+  DESIGN_STYLES_GUIDE,
+  designStylesCatalog,
+  getDesignStyle,
+  type DesignStyle,
+} from './design-styles'
+import {
+  brandDesignSystemsCatalog,
+  brandDesignMdCues,
+  getBrandDesignSystem,
+  pickBrandDesignSystemFromAnalysis,
+} from './brand-design-systems'
 import { THEMES, DEFAULT_THEME_ID, getTheme, themeCatalogForPrompt } from './themes'
 import {
   DESIGNS,
@@ -25,6 +38,17 @@ import {
   templateBlueprintForPrompt,
   pickTemplateFromAnalysis,
 } from './templates'
+import {
+  getLandingTemplate,
+  buildTemplateSpec,
+  defaultImageMap,
+  TEMPLATE_CONTENT_SCHEMA,
+  DEFAULT_LANDING_TEMPLATE_ID,
+  AUTO_LANDING_TEMPLATE_ID,
+  landingTemplateCatalogForPrompt,
+  type TemplateContent,
+  type LandingTemplate,
+} from './site-templates'
 import type { ComponentInspiration, IconResult } from './twentyfirst'
 import { isMcpConfigured } from './twentyfirst-mcp'
 import {
@@ -48,6 +72,11 @@ export type MerchantInput = {
   templateId?: string
   /** optional design family id to force; when omitted the AI chooses one */
   designId?: string
+  /** generation mode: "creative" (free, plan-first agent) or "template"
+   * (fill a curated high-star landing template). Defaults to "creative". */
+  mode?: 'creative' | 'template'
+  /** which curated landing template to fill when mode === "template" */
+  landingTemplateId?: string
 }
 
 /** Human label for each supported generation language. */
@@ -109,7 +138,9 @@ You are shown a merchant's product photos and a short brief. Think out loud, bri
 3. Pick exactly ONE theme id from the catalog below that best matches the brand.
 4. Pick exactly ONE template archetype id from the template library below — this is the proven page/section blueprint you will start from instead of designing from scratch.
 5. Pick exactly ONE design family id from the design library below — this is the visual LAYOUT DNA (hero composition, feature/stat layout, spacing, decoration). Choose the family whose vibe fits the brand so this site does NOT look like a generic template; vary it by industry/mood.
-6. Following the chosen template's blueprint, plan the pages and for each list the sections you will build (use rich sections: features-with-icons, stats, product showcase, gallery, process steps, FAQ, strong CTA, contact details).
+6. Pick exactly ONE design STYLE id from the design-style palette below — this is the overarching art direction (typography, palette logic, signature motion). Commit to it fully so the site has a deliberate, named aesthetic instead of generic slop.
+7. Pick exactly ONE reference BRAND design system id from the brand library below — a real, world-class brand whose design language best fits this brand. You will later READ that brand's DESIGN.md (exact colors, type scale, spacing, radius) and design in that language. Borrow ONLY the design language, never the brand's name/logo/copy.
+8. Following the chosen template's blueprint, plan the pages and for each list the sections you will build (use rich sections: features-with-icons, stats, product showcase, gallery, process steps, FAQ, strong CTA, contact details).
 
 Theme catalog (id (mood): when to use):
 {CATALOG}
@@ -120,11 +151,21 @@ Template library (id: name — when to use):
 Design family library (id: name — when to use):
 {DESIGNS}
 
-Keep it concise (a short paragraph + a per-page bullet plan). End with THREE lines exactly like:
+Design-style palette (id — name: when to use):
+{DESIGN_STYLES}
+
+Brand design-system library (id — name: design language) — pick the closest fit:
+{BRAND_SYSTEMS}
+
+Keep it concise (a short paragraph + a per-page bullet plan). End with FIVE lines exactly like:
 THEME: <theme-id>
 TEMPLATE: <template-id>
 DESIGN: <design-id>
+STYLE: <design-style-id>
+BRAND: <brand-design-system-id>
 Write your analysis in {LANGUAGE}.
+
+{DESIGN_STYLES_GUIDE}
 
 ${TASTE_SKILL_GUIDE}`
 
@@ -411,7 +452,7 @@ async function generateSiteImages(
   const results = await Promise.allSettled(
     plan.map(async (item) => {
       const url = await generateImage({
-        prompt: item.prompt,
+        prompt: `${item.prompt}. Unbranded and generic: absolutely no text, letters, numbers, words, logos, brand names, watermarks, signatures or UI anywhere in the image.`,
         aspectRatio: item.aspectRatio,
         signal,
       })
@@ -451,6 +492,29 @@ function pickThemeFromAnalysis(analysis: string): string | undefined {
   return undefined
 }
 
+function pickDesignStyleFromAnalysis(analysis: string): string | undefined {
+  const match = analysis.match(/STYLE:\s*([a-z0-9-]+)/i)
+  const id = match?.[1]?.toLowerCase()
+  if (id && DESIGN_STYLES.some((s) => s.id === id)) return id
+  for (const s of DESIGN_STYLES) {
+    if (analysis.toLowerCase().includes(s.id)) return s.id
+  }
+  return undefined
+}
+
+/** Compact, prompt-ready cue block for ONE chosen design style. */
+function designStyleCues(style: DesignStyle | undefined): string {
+  if (!style) return ''
+  return [
+    `Design style (commit to this art direction): ${style.name}`,
+    `- Typography: ${style.typography}`,
+    `- Palette: ${style.palette}`,
+    `- Layout move: ${style.layout}`,
+    `- Motion: ${style.motion}`,
+    `- Avoid: ${style.avoid}`,
+  ].join('\n')
+}
+
 export type EmitFn = (event: GenEvent) => void
 
 /**
@@ -485,6 +549,9 @@ export async function runGeneration(
   const analysisSystem = ANALYSIS_SYSTEM.replace('{CATALOG}', catalog)
     .replace('{TEMPLATES}', templateCatalogForPrompt())
     .replace('{DESIGNS}', designCatalogForPrompt())
+    .replace('{DESIGN_STYLES}', designStylesCatalog())
+    .replace('{BRAND_SYSTEMS}', brandDesignSystemsCatalog())
+    .replace('{DESIGN_STYLES_GUIDE}', DESIGN_STYLES_GUIDE)
     .replace('{LANGUAGE}', lang)
   const analysisMessages: ChatMessage[] = [
     { role: 'system', content: analysisSystem },
@@ -519,6 +586,19 @@ export async function runGeneration(
     merchant.designId || pickDesignFromAnalysis(analysis) || DEFAULT_DESIGN_ID
   const design = getDesign(chosenDesign)
   emit({ type: 'log', message: `Selected design family: ${design.name} (${design.id})` })
+  const designStyle = getDesignStyle(pickDesignStyleFromAnalysis(analysis))
+  const styleCues = designStyleCues(designStyle)
+  if (designStyle) {
+    emit({ type: 'log', message: `Design style: ${designStyle.name} (${designStyle.id})` })
+  }
+  const brandSystem = getBrandDesignSystem(pickBrandDesignSystemFromAnalysis(analysis))
+  const brandMdCues = brandDesignMdCues(brandSystem)
+  if (brandSystem) {
+    emit({
+      type: 'log',
+      message: `Reading reference design system: ${brandSystem.name} (DESIGN.md)`,
+    })
+  }
 
   // Plan-first: the agent commits to a concrete, brand-specific build plan
   // (design read + the three dials + section order + signature + imagery)
@@ -536,6 +616,8 @@ export async function runGeneration(
             `Chosen theme: ${theme.name} (${theme.id}) — ${theme.mood}`,
             `Chosen design family: ${design.name} — ${design.description}`,
             `Starting template archetype: ${template.name} (${template.id})`,
+            ...(styleCues ? ['', styleCues] : []),
+            ...(brandMdCues ? ['', brandMdCues] : []),
             '',
             'Your earlier design analysis:',
             analysis.slice(0, 1600),
@@ -671,8 +753,7 @@ export async function runGeneration(
     },
   ]
 
-  const reply = await relayChat(specMessages)
-  const raw = extractJson(reply)
+  const raw = await relayChatJson(specMessages, signal)
   const validDesignIds = DESIGNS.map((d) => d.id)
   const spec = normalizeSiteSpec(
     raw,
@@ -727,6 +808,8 @@ export async function runGeneration(
         '',
         `Theme tokens (use via theme.colors.*): ${JSON.stringify(theme.colors)}`,
         `Design family vibe: ${design.name} — ${design.description}`,
+        ...(styleCues ? ['', styleCues] : []),
+        ...(brandMdCues ? ['', brandMdCues] : []),
         '',
         'Hero copy to render (already written in the target language — do not translate or invent new copy):',
         JSON.stringify(
@@ -846,6 +929,8 @@ export async function runGeneration(
         '',
         `Theme tokens (use via theme.colors.*): ${JSON.stringify(theme.colors)}`,
         `Design family vibe: ${design.name} — ${design.description}`,
+        ...(styleCues ? ['', styleCues] : []),
+        ...(brandMdCues ? ['', brandMdCues] : []),
         '',
         'Section copy to render (already written in the target language — bake it in verbatim, do not translate or invent new copy):',
         JSON.stringify(section, null, 2),
@@ -909,6 +994,8 @@ export async function runGeneration(
         '',
         `Theme tokens (use via theme.colors.*): ${JSON.stringify(theme.colors)}`,
         `Design family vibe: ${design.name} — ${design.description}`,
+        ...(styleCues ? ['', styleCues] : []),
+        ...(brandMdCues ? ['', brandMdCues] : []),
         '',
         'Section copy to render (already written in the target language — bake it in verbatim, do not translate or invent new copy):',
         JSON.stringify(signatureCopy, null, 2),
@@ -1023,6 +1110,306 @@ export async function runGeneration(
 
   // ---- Phase 7: agent self-polish — fix deformed / broken sections --------
   await polishSpec(spec, theme, emit, signal)
+
+  emit({ type: 'spec', spec })
+  return { spec, generatedImages }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Template mode                                                               */
+/* -------------------------------------------------------------------------- */
+
+const TEMPLATE_FILL_SYSTEM = `${AGENT_ROLE}
+
+You are filling a hand-crafted, high-end landing-page TEMPLATE with real, on-brand copy for a specific business. The visual layout is already designed and fixed — your ONLY job is to write the words (and pick lucide icon names) that go into it. Do NOT describe layout, do NOT output HTML or code.
+
+${TASTE_SKILL_GUIDE}
+
+Write copy like a world-class brand copywriter: specific, confident, benefit-led, never generic filler or lorem ipsum. Keep headlines short and punchy; keep body lines tight. Use the merchant's real product/industry details from the brief and images.
+
+${TEMPLATE_CONTENT_SCHEMA}`
+
+/**
+ * Smart-match: ask the model to read the brief (+ any product images) and pick
+ * the single best-fitting curated template from the catalog. Returns the chosen
+ * `LandingTemplate`, falling back to the default if the reply is unusable.
+ */
+async function pickTemplateForBrief(
+  merchant: MerchantInput,
+  imageDataUrls: string[],
+  emit: EmitFn,
+): Promise<LandingTemplate> {
+  const lang = languageLabel(merchant.language)
+  const fallback = getLandingTemplate(DEFAULT_LANDING_TEMPLATE_ID)
+  if (!fallback) {
+    throw new Error('No landing templates are available')
+  }
+  emit({ type: 'step', key: 'match', label: 'Matching the best template for your brand', status: 'active' })
+
+  const system = `${AGENT_ROLE}
+
+You are choosing the single best-fitting landing-page template for a business, from a fixed catalog. Judge by the brand's industry, audience, product type and the desired vibe. Match e-commerce/D2C brands to storefront templates, software/tools to SaaS templates, agencies/creatives to portfolio/studio templates, manufacturers/services to industrial templates, etc. Prefer the template whose category and intent most closely fit.
+
+Catalog (id — name (category): intent):
+${landingTemplateCatalogForPrompt()}
+
+Output ONLY a JSON object: {"id": "<one template id from the catalog>", "reason": "<one short sentence, in ${lang}>"}.`
+
+  const user: ChatMessage = {
+    role: 'user',
+    content: [
+      {
+        type: 'text',
+        text: [
+          briefText(merchant, imageDataUrls.length),
+          '',
+          `Pick the best template id from the catalog above. Reply in ${lang}. Output ONLY the JSON object.`,
+        ].join('\n'),
+      },
+      ...imageParts(imageDataUrls),
+    ],
+  }
+
+  let chosen = fallback
+  try {
+    const reply = await relayChat([{ role: 'system', content: system }, user])
+    const parsed = extractJson(reply) as Record<string, unknown> | null
+    const id = parsed && typeof parsed.id === 'string' ? parsed.id.trim() : ''
+    const match = getLandingTemplate(id)
+    if (match) {
+      chosen = match
+      const reason =
+        parsed && typeof parsed.reason === 'string' ? parsed.reason.trim() : ''
+      emit({
+        type: 'log',
+        message: reason
+          ? `AI 智能匹配：选用「${match.name}」模板 — ${reason}`
+          : `AI 智能匹配：选用「${match.name}」模板`,
+      })
+    } else {
+      emit({
+        type: 'log',
+        message: `智能匹配未返回有效模板，回退到「${chosen.name}」`,
+      })
+    }
+  } catch (err) {
+    emit({
+      type: 'log',
+      message: `智能匹配失败（${
+        err instanceof Error ? err.message : 'error'
+      }），回退到「${chosen.name}」`,
+    })
+  }
+
+  emit({ type: 'step', key: 'match', label: 'Matching the best template for your brand', status: 'done' })
+  return chosen
+}
+
+/** A landing-template image slot queued for gpt-image-2 generation. */
+type ResolvedSlot = { key: string; prompt: ImagePlanItem }
+
+/**
+ * Assigns images to a template's slots: user-uploaded images fill the primary
+ * (non-decorative) slots first, in order; everything else (decorative slots and
+ * any leftover primary slots) is queued for gpt-image-2 generation. Returns the
+ * `_img` slot→index map plus the generation plan.
+ */
+function resolveTemplateImages(
+  template: LandingTemplate,
+  merchant: MerchantInput,
+  theme: ReturnType<typeof getTheme>,
+  uploadedCount: number,
+): { img: Record<string, number>; toGenerate: ResolvedSlot[] } {
+  const palette = Object.values(theme.colors).join(', ')
+  const img: Record<string, number> = {}
+  const toGenerate: ResolvedSlot[] = []
+  let uploadedPtr = 0
+
+  for (const slot of template.imageSlots) {
+    if (!slot.decorative && uploadedPtr < uploadedCount) {
+      img[slot.key] = uploadedPtr++
+      continue
+    }
+    const isHero = /hero|cover|banner/i.test(slot.key) || /hero|cover|banner/i.test(slot.purpose)
+    const prompt: ImagePlanItem = {
+      purpose: slot.key,
+      aspectRatio: isHero ? '1536x1024' : '1024x1024',
+      alt: slot.purpose.slice(0, 80),
+      prompt: `${slot.purpose}. For brand "${merchant.name || template.name}"${
+        merchant.industry ? `, industry: ${merchant.industry}` : ''
+      }. Visual style: ${theme.mood}, palette ${palette}. High-end, professional, photographic, sharp, well-lit. Absolutely NO text, words, letters, numbers, logos, watermarks or UI.`,
+    }
+    toGenerate.push({ key: slot.key, prompt })
+  }
+
+  return { img, toGenerate }
+}
+
+/**
+ * Template mode: fill a curated, pre-designed landing template with brief-derived
+ * copy + the user's images (falling back to gpt-image-2 for missing/decorative
+ * slots). Far lighter than the creative pipeline — no theme/design search, no
+ * 21st.dev MCP, no bespoke JSX authoring — because the layout is already built.
+ */
+export async function runTemplateGeneration(
+  merchant: MerchantInput,
+  imageDataUrls: string[],
+  emit: EmitFn,
+  signal?: AbortSignal,
+): Promise<GenerationResult> {
+  const lang = languageLabel(merchant.language)
+
+  // ---- Phase 0: split the free-text brief into structured fields ----------
+  if (merchant.brief?.trim() && !(merchant.name && merchant.industry && merchant.description)) {
+    emit({ type: 'step', key: 'parse', label: 'Understanding your brief', status: 'active' })
+    merchant = await splitBrief(merchant)
+    emit({ type: 'step', key: 'parse', label: 'Understanding your brief', status: 'done' })
+  }
+
+  // ---- Resolve the template: explicit pick, or AI smart-match -------------
+  const wantsAutoMatch =
+    !merchant.landingTemplateId ||
+    merchant.landingTemplateId === AUTO_LANDING_TEMPLATE_ID
+  const explicit = wantsAutoMatch ? undefined : getLandingTemplate(merchant.landingTemplateId)
+  const template = wantsAutoMatch
+    ? await pickTemplateForBrief(merchant, imageDataUrls, emit)
+    : explicit ?? getLandingTemplate(DEFAULT_LANDING_TEMPLATE_ID)
+  if (!template) {
+    throw new Error('No landing templates are available')
+  }
+  const theme = getTheme(template.themeId)
+  emit({ type: 'template', id: template.id, name: template.name })
+
+  // ---- Phase 1: write the template content (copy + icon names) -------------
+  emit({
+    type: 'step',
+    key: 'fill',
+    label: `Writing copy for the "${template.name}" template`,
+    status: 'active',
+  })
+  emit({
+    type: 'log',
+    message: `Template: ${template.name} (${template.category}) — based on ${template.source.repo} ⭐${template.source.stars}`,
+  })
+
+  const fillUser: ChatMessage = {
+    role: 'user',
+    content: [
+      {
+        type: 'text',
+        text: [
+          `Fill the "${template.name}" template (${template.category}).`,
+          `Template intent: ${template.description}`,
+          '',
+          briefText(merchant, imageDataUrls.length),
+          '',
+          'Placeholder copy (for tone/length reference only — replace with real brand copy):',
+          JSON.stringify(template.placeholder),
+          '',
+          `Write ALL human-readable copy in ${lang}. Output ONLY the JSON content object.`,
+        ].join('\n'),
+      },
+      ...imageParts(imageDataUrls),
+    ],
+  }
+
+  let content: TemplateContent = { ...template.placeholder }
+  try {
+    const reply = await relayChat([
+      { role: 'system', content: TEMPLATE_FILL_SYSTEM.replaceAll('{LANGUAGE}', lang) },
+      fillUser,
+    ])
+    const parsed = extractJson(reply)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      content = { ...template.placeholder, ...(parsed as TemplateContent) }
+      emit({ type: 'log', message: 'Generated on-brand copy for every template slot' })
+    } else {
+      emit({ type: 'log', message: 'Copy generation returned no JSON; using placeholder copy' })
+    }
+  } catch (err) {
+    emit({
+      type: 'log',
+      message: `Copy generation failed (${
+        err instanceof Error ? err.message : 'error'
+      }); using placeholder copy`,
+    })
+  }
+  content.brand = merchant.name || content.brand || template.placeholder.brand || template.name
+  emit({
+    type: 'step',
+    key: 'fill',
+    label: `Writing copy for the "${template.name}" template`,
+    status: 'done',
+  })
+
+  // ---- Phase 2: resolve images (user images first, generate the rest) -----
+  const allImages = [...imageDataUrls]
+  const generatedImages: GeneratedImage[] = []
+  const { img, toGenerate } = resolveTemplateImages(template, merchant, theme, imageDataUrls.length)
+
+  const willGenerate = isImageGenConfigured() ? toGenerate : []
+  if (willGenerate.length) {
+    emit({
+      type: 'step',
+      key: 'image',
+      label: 'Generating images for the template (gpt-image-2)',
+      status: 'active',
+    })
+    emit({
+      type: 'log',
+      message: `Generating ${willGenerate.length} image(s) for slots: ${willGenerate
+        .map((s) => s.key)
+        .join(', ')}`,
+    })
+    const made = await generateSiteImages(
+      willGenerate.map((s) => s.prompt),
+      emit,
+      signal,
+    )
+    // `generateSiteImages` returns results in plan order; map each back to its
+    // slot. A failed slot simply stays unmapped and falls back to images[0].
+    willGenerate.forEach((slot, i) => {
+      const image = made[i]
+      if (image) {
+        img[slot.key] = allImages.length
+        allImages.push(image.dataUrl)
+        generatedImages.push(image)
+      }
+    })
+    emit({
+      type: 'step',
+      key: 'image',
+      label: 'Generating images for the template (gpt-image-2)',
+      status: 'done',
+    })
+  }
+
+  // Any slot still unmapped (no upload, generation off/failed) round-robins over
+  // whatever images we ended up with so the template never points at nothing.
+  const fallbackMap = defaultImageMap(template, allImages.length)
+  for (const slot of template.imageSlots) {
+    if (img[slot.key] === undefined && allImages.length) {
+      img[slot.key] = fallbackMap[slot.key] ?? 0
+    }
+  }
+  content._img = img
+
+  // ---- Phase 3: assemble + normalize the chromeless spec ------------------
+  emit({ type: 'step', key: 'write', label: 'Assembling your site', status: 'active' })
+  const built = buildTemplateSpec(template, content)
+  const validIds = THEMES.map((t) => t.id)
+  const validDesignIds = DESIGNS.map((d) => d.id)
+  const spec = normalizeSiteSpec(
+    built,
+    content.brand || merchant.name || template.name,
+    validIds,
+    template.themeId,
+    validDesignIds,
+    template.designId || DEFAULT_DESIGN_ID,
+  )
+  spec.chrome = 'none'
+  spec.templateRef = template.id
+  emit({ type: 'step', key: 'write', label: 'Assembling your site', status: 'done' })
 
   emit({ type: 'spec', spec })
   return { spec, generatedImages }

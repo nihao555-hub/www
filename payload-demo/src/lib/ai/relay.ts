@@ -17,7 +17,7 @@ export type RelayConfig = {
 export function getRelayConfig(): RelayConfig {
   const baseUrl = process.env.OPENAI_COMPAT_BASE_URL
   const apiKey = process.env.OPENAI_COMPAT_API_KEY
-  const model = process.env.OPENAI_COMPAT_MODEL || 'gemini-3.5-flash'
+  const model = process.env.OPENAI_COMPAT_MODEL || 'gemini-3-flash'
 
   if (!baseUrl || !apiKey) {
     throw new Error(
@@ -32,6 +32,29 @@ export function isRelayConfigured(): boolean {
   return Boolean(process.env.OPENAI_COMPAT_BASE_URL && process.env.OPENAI_COMPAT_API_KEY)
 }
 
+/** Transient relay failures worth retrying: rate limits, overload, gateway errors. */
+function isRetryableStatus(status: number, body: string): boolean {
+  if (status === 429 || status === 500 || status === 502 || status === 503 || status === 504 || status === 529) {
+    return true
+  }
+  // grsai returns 400 with this message when the model is temporarily overloaded.
+  if (status === 400 && /load is too high|try again later|overloaded|rate.?limit/i.test(body)) {
+    return true
+  }
+  return false
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new Error('aborted'))
+    const t = setTimeout(resolve, ms)
+    signal?.addEventListener('abort', () => { clearTimeout(t); reject(new Error('aborted')) }, { once: true })
+  })
+}
+
+/** Backoff schedule (ms) between relay attempts; length + 1 = total attempts. */
+const RELAY_BACKOFF_MS = [2000, 5000, 10000, 20000, 30000]
+
 type TextPart = { type: 'text'; text: string }
 type ImagePart = { type: 'image_url'; image_url: { url: string } }
 type ContentPart = TextPart | ImagePart
@@ -45,38 +68,58 @@ export type ChatMessage = {
  * Calls the relay chat completions endpoint (non-streaming) and returns the raw
  * assistant text.
  */
-export async function relayChat(messages: ChatMessage[]): Promise<string> {
+export async function relayChat(messages: ChatMessage[], signal?: AbortSignal): Promise<string> {
   const { baseUrl, apiKey, model } = getRelayConfig()
+  let lastErr: unknown
 
-  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      stream: false,
-      messages,
-      max_tokens: 16000,
-    }),
-  })
+  for (let attempt = 0; attempt <= RELAY_BACKOFF_MS.length; attempt++) {
+    if (signal?.aborted) throw new Error('aborted')
+    try {
+      const res = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          stream: false,
+          messages,
+          max_tokens: 16000,
+        }),
+        signal,
+      })
 
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '')
-    throw new Error(`Relay request failed (${res.status}): ${detail.slice(0, 500)}`)
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '')
+        if (isRetryableStatus(res.status, detail) && attempt < RELAY_BACKOFF_MS.length) {
+          lastErr = new Error(`Relay request failed (${res.status}): ${detail.slice(0, 200)}`)
+          await sleep(RELAY_BACKOFF_MS[attempt], signal)
+          continue
+        }
+        throw new Error(`Relay request failed (${res.status}): ${detail.slice(0, 500)}`)
+      }
+
+      const data = (await res.json()) as {
+        choices?: Array<{ message?: { content?: string } }>
+      }
+
+      const content = data.choices?.[0]?.message?.content
+      if (!content) throw new Error('Relay returned an empty response.')
+      return content
+    } catch (err) {
+      if (signal?.aborted) throw err
+      // Network-level failure (timeout, reset): retry within budget.
+      lastErr = err
+      const retryable = !(err instanceof Error) || !err.message.startsWith('Relay request failed')
+      if (retryable && attempt < RELAY_BACKOFF_MS.length) {
+        await sleep(RELAY_BACKOFF_MS[attempt], signal)
+        continue
+      }
+      throw err
+    }
   }
-
-  const data = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>
-  }
-
-  const content = data.choices?.[0]?.message?.content
-  if (!content) {
-    throw new Error('Relay returned an empty response.')
-  }
-
-  return content
+  throw lastErr instanceof Error ? lastErr : new Error('Relay request failed')
 }
 
 /**
@@ -92,25 +135,46 @@ export async function relayChatStream(
 ): Promise<string> {
   const { baseUrl, apiKey, model } = getRelayConfig()
 
-  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      stream: true,
-      messages,
-      max_tokens: 16000,
-    }),
-    signal,
-  })
+  let res: Response | undefined
+  for (let attempt = 0; attempt <= RELAY_BACKOFF_MS.length; attempt++) {
+    if (signal?.aborted) throw new Error('aborted')
+    let candidate: Response
+    try {
+      candidate = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          stream: true,
+          messages,
+          max_tokens: 16000,
+        }),
+        signal,
+      })
+    } catch (err) {
+      if (signal?.aborted) throw err
+      if (attempt < RELAY_BACKOFF_MS.length) {
+        await sleep(RELAY_BACKOFF_MS[attempt], signal)
+        continue
+      }
+      throw err
+    }
 
-  if (!res.ok || !res.body) {
-    const detail = await res.text().catch(() => '')
-    throw new Error(`Relay stream failed (${res.status}): ${detail.slice(0, 500)}`)
+    if (!candidate.ok || !candidate.body) {
+      const detail = await candidate.text().catch(() => '')
+      if (isRetryableStatus(candidate.status, detail) && attempt < RELAY_BACKOFF_MS.length) {
+        await sleep(RELAY_BACKOFF_MS[attempt], signal)
+        continue
+      }
+      throw new Error(`Relay stream failed (${candidate.status}): ${detail.slice(0, 500)}`)
+    }
+    res = candidate
+    break
   }
+  if (!res || !res.body) throw new Error('Relay stream failed: no response')
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
@@ -147,6 +211,39 @@ export async function relayChatStream(
   }
 
   return full
+}
+
+/**
+ * Calls the relay and parses the reply as JSON, retrying when the model returns
+ * malformed JSON (flaky models occasionally emit broken JSON). On each retry we
+ * append a corrective instruction asking for valid JSON only.
+ */
+export async function relayChatJson(
+  messages: ChatMessage[],
+  signal?: AbortSignal,
+  attempts = 3,
+): Promise<unknown> {
+  let lastErr: unknown
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const msgs: ChatMessage[] =
+      attempt === 0
+        ? messages
+        : [
+            ...messages,
+            {
+              role: 'user',
+              content:
+                'Your previous reply was not valid JSON. Output ONLY the corrected, complete JSON value: no markdown fences, no commentary, properly quoted keys and strings.',
+            },
+          ]
+    const reply = await relayChat(msgs, signal)
+    try {
+      return extractJson(reply)
+    } catch (err) {
+      lastErr = err
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('Relay returned unparseable JSON')
 }
 
 /**

@@ -230,7 +230,9 @@ export async function runComponentAgent(
             call.resultCount = found.length
             call.componentName = top.componentName
             call.similarity = top.similarity
-            call.codePreview = (top.demoCode || top.code).slice(0, 1400)
+            // Surface the full component source in the live tool card (the card
+            // scrolls); it's already capped at MAX_CODE_CHARS upstream.
+            call.codePreview = top.demoCode || top.code
           } else {
             call.status = 'done'
             call.resultCount = 0
