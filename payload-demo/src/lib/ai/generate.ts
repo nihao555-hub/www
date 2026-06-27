@@ -16,6 +16,12 @@ import {
   getDesignStyle,
   type DesignStyle,
 } from './design-styles'
+import {
+  brandDesignSystemsCatalog,
+  brandDesignMdCues,
+  getBrandDesignSystem,
+  pickBrandDesignSystemFromAnalysis,
+} from './brand-design-systems'
 import { THEMES, DEFAULT_THEME_ID, getTheme, themeCatalogForPrompt } from './themes'
 import {
   DESIGNS,
@@ -133,7 +139,8 @@ You are shown a merchant's product photos and a short brief. Think out loud, bri
 4. Pick exactly ONE template archetype id from the template library below — this is the proven page/section blueprint you will start from instead of designing from scratch.
 5. Pick exactly ONE design family id from the design library below — this is the visual LAYOUT DNA (hero composition, feature/stat layout, spacing, decoration). Choose the family whose vibe fits the brand so this site does NOT look like a generic template; vary it by industry/mood.
 6. Pick exactly ONE design STYLE id from the design-style palette below — this is the overarching art direction (typography, palette logic, signature motion). Commit to it fully so the site has a deliberate, named aesthetic instead of generic slop.
-7. Following the chosen template's blueprint, plan the pages and for each list the sections you will build (use rich sections: features-with-icons, stats, product showcase, gallery, process steps, FAQ, strong CTA, contact details).
+7. Pick exactly ONE reference BRAND design system id from the brand library below — a real, world-class brand whose design language best fits this brand. You will later READ that brand's DESIGN.md (exact colors, type scale, spacing, radius) and design in that language. Borrow ONLY the design language, never the brand's name/logo/copy.
+8. Following the chosen template's blueprint, plan the pages and for each list the sections you will build (use rich sections: features-with-icons, stats, product showcase, gallery, process steps, FAQ, strong CTA, contact details).
 
 Theme catalog (id (mood): when to use):
 {CATALOG}
@@ -147,11 +154,15 @@ Design family library (id: name — when to use):
 Design-style palette (id — name: when to use):
 {DESIGN_STYLES}
 
-Keep it concise (a short paragraph + a per-page bullet plan). End with THREE lines exactly like:
+Brand design-system library (id — name: design language) — pick the closest fit:
+{BRAND_SYSTEMS}
+
+Keep it concise (a short paragraph + a per-page bullet plan). End with FIVE lines exactly like:
 THEME: <theme-id>
 TEMPLATE: <template-id>
 DESIGN: <design-id>
 STYLE: <design-style-id>
+BRAND: <brand-design-system-id>
 Write your analysis in {LANGUAGE}.
 
 {DESIGN_STYLES_GUIDE}
@@ -539,6 +550,7 @@ export async function runGeneration(
     .replace('{TEMPLATES}', templateCatalogForPrompt())
     .replace('{DESIGNS}', designCatalogForPrompt())
     .replace('{DESIGN_STYLES}', designStylesCatalog())
+    .replace('{BRAND_SYSTEMS}', brandDesignSystemsCatalog())
     .replace('{DESIGN_STYLES_GUIDE}', DESIGN_STYLES_GUIDE)
     .replace('{LANGUAGE}', lang)
   const analysisMessages: ChatMessage[] = [
@@ -579,6 +591,14 @@ export async function runGeneration(
   if (designStyle) {
     emit({ type: 'log', message: `Design style: ${designStyle.name} (${designStyle.id})` })
   }
+  const brandSystem = getBrandDesignSystem(pickBrandDesignSystemFromAnalysis(analysis))
+  const brandMdCues = brandDesignMdCues(brandSystem)
+  if (brandSystem) {
+    emit({
+      type: 'log',
+      message: `Reading reference design system: ${brandSystem.name} (DESIGN.md)`,
+    })
+  }
 
   // Plan-first: the agent commits to a concrete, brand-specific build plan
   // (design read + the three dials + section order + signature + imagery)
@@ -597,6 +617,7 @@ export async function runGeneration(
             `Chosen design family: ${design.name} — ${design.description}`,
             `Starting template archetype: ${template.name} (${template.id})`,
             ...(styleCues ? ['', styleCues] : []),
+            ...(brandMdCues ? ['', brandMdCues] : []),
             '',
             'Your earlier design analysis:',
             analysis.slice(0, 1600),
@@ -789,6 +810,7 @@ export async function runGeneration(
         `Theme tokens (use via theme.colors.*): ${JSON.stringify(theme.colors)}`,
         `Design family vibe: ${design.name} — ${design.description}`,
         ...(styleCues ? ['', styleCues] : []),
+        ...(brandMdCues ? ['', brandMdCues] : []),
         '',
         'Hero copy to render (already written in the target language — do not translate or invent new copy):',
         JSON.stringify(
@@ -909,6 +931,7 @@ export async function runGeneration(
         `Theme tokens (use via theme.colors.*): ${JSON.stringify(theme.colors)}`,
         `Design family vibe: ${design.name} — ${design.description}`,
         ...(styleCues ? ['', styleCues] : []),
+        ...(brandMdCues ? ['', brandMdCues] : []),
         '',
         'Section copy to render (already written in the target language — bake it in verbatim, do not translate or invent new copy):',
         JSON.stringify(section, null, 2),
@@ -973,6 +996,7 @@ export async function runGeneration(
         `Theme tokens (use via theme.colors.*): ${JSON.stringify(theme.colors)}`,
         `Design family vibe: ${design.name} — ${design.description}`,
         ...(styleCues ? ['', styleCues] : []),
+        ...(brandMdCues ? ['', brandMdCues] : []),
         '',
         'Section copy to render (already written in the target language — bake it in verbatim, do not translate or invent new copy):',
         JSON.stringify(signatureCopy, null, 2),
