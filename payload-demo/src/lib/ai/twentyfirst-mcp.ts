@@ -68,6 +68,38 @@ type RawComponent = {
   similarity?: number
 }
 
+/** Per-call timeout for an MCP tool round (21st can be slow for some queries). */
+const CALL_TIMEOUT_MS = 90_000
+/** How many times to retry a failed/empty tool call before giving up. */
+const CALL_RETRIES = 3
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+
+/**
+ * Calls an MCP tool with a generous timeout and exponential-backoff retries.
+ * 21st.dev occasionally times out or transiently errors on the first hit
+ * (especially right after the server spawns); retrying smooths those over so a
+ * single flaky round doesn't surface as "MCP 调用失败".
+ */
+async function callToolWithRetry(
+  client: Client,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<unknown> {
+  let lastErr: unknown
+  for (let attempt = 0; attempt <= CALL_RETRIES; attempt++) {
+    try {
+      return await client.callTool({ name, arguments: args }, undefined, {
+        timeout: CALL_TIMEOUT_MS,
+      })
+    } catch (err) {
+      lastErr = err
+      if (attempt < CALL_RETRIES) await sleep(700 * 2 ** attempt)
+    }
+  }
+  throw lastErr
+}
+
 function readToolText(result: unknown): string {
   const content = (result as { content?: Array<{ type?: string; text?: string }> })?.content
   if (!Array.isArray(content)) return ''
@@ -164,9 +196,9 @@ export async function openMcpSession(): Promise<McpSession> {
     searchQuery: string,
     message: string,
   ): Promise<ComponentRef[]> => {
-    const result = await client.callTool({
-      name: COMPONENT_INSPIRATION_TOOL,
-      arguments: { message, searchQuery },
+    const result = await callToolWithRetry(client, COMPONENT_INSPIRATION_TOOL, {
+      message,
+      searchQuery,
     })
     const text = readToolText(result)
     if (!text) return []
@@ -198,9 +230,9 @@ export async function openMcpSession(): Promise<McpSession> {
   const logos = async (queries: string[]): Promise<IconResult[]> => {
     const clean = queries.map((q) => q.trim()).filter(Boolean).slice(0, 8)
     if (!clean.length) return []
-    const result = await client.callTool({
-      name: LOGO_SEARCH_TOOL,
-      arguments: { queries: clean, format: 'SVG' },
+    const result = await callToolWithRetry(client, LOGO_SEARCH_TOOL, {
+      queries: clean,
+      format: 'SVG',
     })
     const text = readToolText(result)
     if (!text) return []

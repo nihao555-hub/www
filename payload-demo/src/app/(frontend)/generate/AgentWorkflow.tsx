@@ -429,7 +429,7 @@ export const AgentWorkflow: React.FC<{
                                     <CodeBlock
                                       code={call.codePreview}
                                       language="tsx"
-                                      className="max-h-72 overflow-auto"
+                                      className="max-h-[32rem] overflow-auto"
                                     />
                                   )}
                                 </div>

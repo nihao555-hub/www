@@ -91,6 +91,8 @@ export const GenerateForm: React.FC<{ templates?: LandingTemplateMeta[] }> = ({
   const [mode, setMode] = useState<GenMode>('creative')
   // 'auto' = let the AI smart-match the best template from the brief.
   const [templateId, setTemplateId] = useState<string | null>('auto')
+  // Manual template picker stays collapsed by default — default flow is AI auto-match.
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false)
 
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -365,7 +367,16 @@ export const GenerateForm: React.FC<{ templates?: LandingTemplateMeta[] }> = ({
             </p>
           </div>
 
-          {/* Mode toggle: free-creative vs template */}
+          <div className="w-full max-w-2xl">
+            {promptBox}
+            {error && (
+              <div className="mt-3 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+                {error}
+              </div>
+            )}
+          </div>
+
+          {/* Mode toggle (below the input): free-creative vs template */}
           <div className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 p-1">
             {(
               [
@@ -387,15 +398,6 @@ export const GenerateForm: React.FC<{ templates?: LandingTemplateMeta[] }> = ({
                 {label}
               </button>
             ))}
-          </div>
-
-          <div className="w-full max-w-2xl">
-            {promptBox}
-            {error && (
-              <div className="mt-3 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-                {error}
-              </div>
-            )}
           </div>
 
           {mode === 'creative' ? (
@@ -424,81 +426,85 @@ export const GenerateForm: React.FC<{ templates?: LandingTemplateMeta[] }> = ({
               </p>
             </div>
           ) : (
-            <div className="w-full max-w-3xl">
-              <p className="mb-2 text-center text-xs text-muted-foreground">
-                让 AI 智能匹配，或手动选一个模板（{templates.length} 个 · 均来自高 star 开源项目）
-              </p>
-              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-                {(() => {
-                  const selected = templateId === 'auto'
-                  return (
-                    <button
-                      type="button"
-                      onClick={() => setTemplateId('auto')}
-                      className={`group relative flex flex-col gap-1.5 rounded-xl border p-3 text-left transition-all hover:shadow-sm ${
-                        selected
-                          ? 'border-primary bg-primary/5 shadow-sm'
-                          : 'border-dashed border-primary/40 bg-card hover:border-primary/60 hover:bg-accent'
-                      }`}
-                    >
-                      {selected && (
-                        <span className="absolute right-2 top-2 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                          <Check className="size-3" />
-                        </span>
-                      )}
-                      <span className="flex items-center gap-1.5">
-                        <Sparkles className="size-4 text-primary" />
-                        <span className="block text-sm font-semibold">AI 智能匹配</span>
-                      </span>
-                      <span className="block text-[11px] font-medium text-primary/80">推荐 · 自动选模板</span>
-                      <span className="line-clamp-2 block text-xs text-muted-foreground">
-                        只写一句话，AI 读懂你的行业与调性，从模板库里自动挑最契合的那一个。
-                      </span>
-                      <span className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
-                        <Wand2 className="size-3 text-primary/70" />
-                        无需手动挑选
-                      </span>
-                    </button>
-                  )
-                })()}
-                {templates.map((tpl) => {
-                  const selected = templateId === tpl.id
-                  return (
-                    <button
-                      key={tpl.id}
-                      type="button"
-                      onClick={() => setTemplateId(tpl.id)}
-                      className={`group relative flex flex-col gap-1.5 rounded-xl border p-3 text-left transition-all hover:shadow-sm ${
-                        selected
-                          ? 'border-primary bg-primary/5 shadow-sm'
-                          : 'border-border bg-card hover:border-primary/50 hover:bg-accent'
-                      }`}
-                    >
-                      {selected && (
-                        <span className="absolute right-2 top-2 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                          <Check className="size-3" />
-                        </span>
-                      )}
-                      <span className="flex items-center gap-1.5">
-                        <span className="block text-sm font-semibold">{tpl.name}</span>
-                      </span>
-                      <span className="block text-[11px] font-medium text-primary/80">
-                        {tpl.category}
-                      </span>
-                      <span className="line-clamp-2 block text-xs text-muted-foreground">
-                        {tpl.description}
-                      </span>
-                      <span className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
-                        <Star className="size-3 fill-amber-400 text-amber-400" />
-                        {(tpl.source.stars / 1000).toFixed(1)}k · {tpl.source.repo}
-                      </span>
-                    </button>
-                  )
-                })}
+            <div className="flex w-full max-w-2xl flex-col items-center gap-3">
+              <div className="flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary">
+                <Sparkles className="size-3.5" />
+                AI 智能匹配已开启 · 自动从 {templates.length} 个高 star 模板里挑最契合的
               </div>
-              <p className="mt-3 text-center text-[11px] text-muted-foreground">
-                提示：用一段话描述你的品牌即可；上传商品图可选（缺图会用 AI 自动生成）。
+              <p className="text-center text-[11px] text-muted-foreground">
+                用一段话描述你的品牌、上传商品图（可选，缺图会用 AI 生成），点发送即可生成。
               </p>
+
+              {/* Manual template picker (optional, collapsed by default) */}
+              <button
+                type="button"
+                onClick={() => setShowTemplatePicker((v) => !v)}
+                className="text-[11px] font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+              >
+                {showTemplatePicker ? '收起手动选择' : '高级：手动选择模板（可选）'}
+              </button>
+
+              {showTemplatePicker && (
+                <div className="grid w-full grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                  <button
+                    type="button"
+                    onClick={() => setTemplateId('auto')}
+                    className={`group relative flex flex-col gap-1.5 rounded-xl border p-3 text-left transition-all hover:shadow-sm ${
+                      templateId === 'auto'
+                        ? 'border-primary bg-primary/5 shadow-sm'
+                        : 'border-dashed border-primary/40 bg-card hover:border-primary/60 hover:bg-accent'
+                    }`}
+                  >
+                    {templateId === 'auto' && (
+                      <span className="absolute right-2 top-2 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                        <Check className="size-3" />
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="size-4 text-primary" />
+                      <span className="block text-sm font-semibold">AI 智能匹配</span>
+                    </span>
+                    <span className="block text-[11px] font-medium text-primary/80">推荐 · 自动选模板</span>
+                    <span className="line-clamp-2 block text-xs text-muted-foreground">
+                      只写一句话，AI 读懂你的行业与调性，从模板库里自动挑最契合的那一个。
+                    </span>
+                  </button>
+                  {templates.map((tpl) => {
+                    const selected = templateId === tpl.id
+                    return (
+                      <button
+                        key={tpl.id}
+                        type="button"
+                        onClick={() => setTemplateId(tpl.id)}
+                        className={`group relative flex flex-col gap-1.5 rounded-xl border p-3 text-left transition-all hover:shadow-sm ${
+                          selected
+                            ? 'border-primary bg-primary/5 shadow-sm'
+                            : 'border-border bg-card hover:border-primary/50 hover:bg-accent'
+                        }`}
+                      >
+                        {selected && (
+                          <span className="absolute right-2 top-2 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                            <Check className="size-3" />
+                          </span>
+                        )}
+                        <span className="flex items-center gap-1.5">
+                          <span className="block text-sm font-semibold">{tpl.name}</span>
+                        </span>
+                        <span className="block text-[11px] font-medium text-primary/80">
+                          {tpl.category}
+                        </span>
+                        <span className="line-clamp-2 block text-xs text-muted-foreground">
+                          {tpl.description}
+                        </span>
+                        <span className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+                          <Star className="size-3 fill-amber-400 text-amber-400" />
+                          {(tpl.source.stars / 1000).toFixed(1)}k · {tpl.source.repo}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )}
         </main>
@@ -506,11 +512,11 @@ export const GenerateForm: React.FC<{ templates?: LandingTemplateMeta[] }> = ({
     )
   }
 
-  // ---- Working / done: full-bleed left 20% rail (status + input) + right 80% live preview ----
+  // ---- Working / done: full-bleed left rail (status + input) + right live preview ----
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-background lg:flex-row">
       {/* Left rail: agent status (top) + input (bottom) */}
-      <div className="flex w-full shrink-0 flex-col gap-3 border-b border-border p-3 lg:h-full lg:w-1/5 lg:min-w-[280px] lg:border-b-0 lg:border-r">
+      <div className="flex w-full shrink-0 flex-col gap-3 border-b border-border p-3 lg:h-full lg:w-[40%] lg:min-w-[420px] xl:w-[36%] 2xl:w-[32%] lg:border-b-0 lg:border-r">
         <div className="flex items-center justify-between px-1">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Sparkles className="size-4 text-primary" />
