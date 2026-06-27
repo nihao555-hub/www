@@ -1402,6 +1402,367 @@ return (
 </div>);
 `)
 
+/* ---- Premium / awwwards-grade originals (Studio Noir / Lumen / Atelier) -- */
+
+/* Dark editorial studio — big type, marquee, asymmetric work grid.
+   Design language adapted from awwwards-tier studio sites (Studio Freight,
+   editorial agencies). */
+const STUDIO_NOIR_CODE = makeComponent(`
+var feats = arr(feat.items);
+var logos = arr(co.logos);
+var stats = arr(co.stats);
+var marq = logos.length ? logos : ["Strategy","Identity","Web","Motion","Art Direction","Editorial"];
+var gal = ["hero","showcase","work3","work4"];
+return (
+<div style={{ background: c.background, color: c.foreground, fontFamily: bodyFont }}>
+  ${NAV}
+  <section className="relative overflow-hidden px-6 pt-20 pb-16">
+    <div className="pointer-events-none absolute -right-32 top-0 h-[520px] w-[520px] rounded-full blur-[140px]" style={{ background: mix(c.primary, 22) }} aria-hidden="true"></div>
+    <div className="relative mx-auto max-w-6xl">
+      <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.3em]" style={{ color: mix(c.foreground, 55) }}><span style={{ color: c.primary }}>●</span>{t(hero.eyebrow, "Independent studio")}</div>
+      <h1 className="mt-8 text-6xl font-extrabold leading-[0.92] tracking-tight sm:text-8xl" style={{ fontFamily: heading }}>{t(hero.title, brand)}</h1>
+      <div className="mt-10 grid gap-8 md:grid-cols-[1.2fr_1fr] md:items-end">
+        <p className="max-w-xl text-lg leading-relaxed" style={{ color: mix(c.foreground, 70) }}>{t(hero.subtitle)}</p>
+        <div className="flex flex-wrap gap-3 md:justify-end">
+          <a href={t((hero.primaryCta||{}).href, "/products")} className="group inline-flex items-center gap-2 rounded-full px-7 py-3 text-sm font-semibold transition-transform hover:-translate-y-0.5" style={{ background: c.primary, color: c.primaryForeground }}>{t((hero.primaryCta||{}).label, "View work")}<Icon name="ArrowUpRight" className="h-4 w-4" /></a>
+          <a href={t((hero.secondaryCta||{}).href, "/contact")} className="inline-flex items-center rounded-full px-7 py-3 text-sm font-semibold" style={{ border: "1px solid " + mix(c.foreground, 24), color: c.foreground }}>{t((hero.secondaryCta||{}).label, "Start a project")}</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section className="overflow-hidden border-y py-6" style={{ borderColor: mix(c.border, 60) }}>
+    <motion.div className="flex gap-14 whitespace-nowrap pr-14" animate={{ x: ["0%", "-50%"] }} transition={{ duration: 22, repeat: Infinity, ease: "linear" }}>
+      {marq.concat(marq).map(function(l, i){ return (<span key={i} className="text-2xl font-bold tracking-tight" style={{ fontFamily: heading, color: mix(c.foreground, 32) }}>{l}<span style={{ color: c.primary }}> ✦ </span></span>); })}
+    </motion.div>
+  </section>
+
+  <section className="px-6 py-20">
+    <div className="mx-auto max-w-6xl">
+      <div className="mb-10 flex items-end justify-between">
+        <h2 className="text-3xl font-bold tracking-tight sm:text-5xl" style={{ fontFamily: heading }}>{t(feat.title, "Selected work")}</h2>
+        <span className="hidden text-sm sm:block" style={{ color: mix(c.foreground, 55) }}>{t(feat.subtitle)}</span>
+      </div>
+      <div className="grid gap-5 md:grid-cols-2">
+        {gal.map(function(g, i){ return (
+          <motion.a key={i} href="/products" initial={{ opacity: 0, y: 28 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: i * 0.06 }} className={"group relative overflow-hidden rounded-3xl " + (i % 3 === 0 ? "md:col-span-2" : "")} style={{ border: "1px solid " + mix(c.border, 60) }}>
+            <img src={images[_img[g]] || imgAt(i)} alt={"work " + (i+1)} className="block w-full transition-transform duration-700 group-hover:scale-105" style={{ aspectRatio: i % 3 === 0 ? "21/9" : "4/3", objectFit: "cover" }} />
+            <div className="absolute inset-x-0 bottom-0 flex items-center justify-between p-6" style={{ background: "linear-gradient(to top, " + mix(c.background, 88) + ", transparent)" }}>
+              <span className="text-lg font-semibold" style={{ fontFamily: heading }}>{t((feats[i]||{}).title, "Project " + (i+1))}</span>
+              <Icon name="ArrowUpRight" className="h-5 w-5 transition-transform group-hover:translate-x-1 group-hover:-translate-y-1" style={{ color: c.primary }} />
+            </div>
+          </motion.a>); })}
+      </div>
+    </div>
+  </section>
+
+  {feats.length ? (
+  <section className="px-6 py-20" style={{ background: mix(c.foreground, 4) }}>
+    <div className="mx-auto grid max-w-6xl gap-12 md:grid-cols-[1fr_1.3fr]">
+      <h2 className="text-3xl font-bold tracking-tight sm:text-4xl" style={{ fontFamily: heading }}>{t(show.title, "What we do")}</h2>
+      <div>
+        {feats.map(function(f, i){ return (<div key={i} className="flex items-start gap-5 py-5" style={{ borderTop: i ? "1px solid " + mix(c.border, 50) : "none" }}><span className="text-sm" style={{ color: c.primary }}>{"0" + (i+1)}</span><div><h3 className="text-xl font-semibold" style={{ fontFamily: heading }}>{f.title}</h3><p className="mt-1 text-sm leading-relaxed" style={{ color: mix(c.foreground, 64) }}>{f.body}</p></div></div>); })}
+      </div>
+    </div>
+  </section>) : null}
+
+  {stats.length ? (
+  <section className="px-6 py-16"><div className="mx-auto grid max-w-5xl gap-8 text-center sm:grid-cols-3">{stats.map(function(s, i){ return (<div key={i}><div className="text-5xl font-extrabold" style={{ fontFamily: heading, color: c.primary }}>{s.value}</div><div className="mt-2 text-xs font-semibold uppercase tracking-widest" style={{ color: mix(c.foreground, 55) }}>{s.label}</div></div>); })}</div></section>) : null}
+
+  <section className="px-6 pb-24 pt-10">
+    <div className="mx-auto max-w-6xl rounded-[2rem] px-8 py-20 text-center" style={{ background: c.primary, color: c.primaryForeground }}>
+      <h2 className="mx-auto max-w-3xl text-4xl font-extrabold tracking-tight sm:text-6xl" style={{ fontFamily: heading }}>{t(cta.title, "Let's build something memorable")}</h2>
+      <p className="mx-auto mt-5 max-w-lg text-base" style={{ color: mix(c.primaryForeground, 80) }}>{t(cta.body)}</p>
+      <a href={t((cta.button||{}).href, "/contact")} className="mt-9 inline-flex items-center gap-2 rounded-full px-9 py-3.5 text-sm font-bold" style={{ background: c.primaryForeground, color: c.primary }}>{t((cta.button||{}).label, "Start a project")}<Icon name="ArrowRight" className="h-4 w-4" /></a>
+    </div>
+  </section>
+  ${FOOTER}
+</div>);
+`)
+
+/* Premium SaaS / tech — gradient glow hero + bento feature grid.
+   Design language adapted from Linear / Vercel / Magic UI (animated). */
+const LUMEN_CODE = makeComponent(`
+var feats = arr(feat.items);
+var logos = arr(co.logos);
+var stats = arr(co.stats);
+var pricing = arr(co.pricing);
+return (
+<div style={{ background: c.background, color: c.foreground, fontFamily: bodyFont }}>
+  ${NAV}
+  <section className="relative overflow-hidden px-6 pt-24 pb-20 text-center">
+    <div className="pointer-events-none absolute left-1/2 top-[-20%] h-[640px] w-[1000px] -translate-x-1/2 rounded-full blur-[150px]" style={{ background: "radial-gradient(circle, " + mix(c.primary, 38) + ", transparent 60%)" }} aria-hidden="true"></div>
+    <div className="relative mx-auto max-w-3xl">
+      {t(hero.eyebrow) ? (<span className="mb-6 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold" style={{ background: mix(c.primary, 12), color: c.primary, border: "1px solid " + mix(c.primary, 26) }}><Icon name="Sparkles" className="h-3.5 w-3.5" />{hero.eyebrow}</span>) : null}
+      <h1 className="text-balance text-5xl font-extrabold leading-[1.02] tracking-tight sm:text-7xl" style={{ fontFamily: heading }}>{t(hero.title, brand)}</h1>
+      <p className="mx-auto mt-7 max-w-xl text-lg" style={{ color: mix(c.foreground, 66) }}>{t(hero.subtitle)}</p>
+      <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+        <a href={t((hero.primaryCta||{}).href, "/products")} className="rounded-xl px-7 py-3 text-sm font-semibold transition-transform hover:-translate-y-0.5" style={{ background: c.primary, color: c.primaryForeground, boxShadow: "0 20px 50px -20px " + mix(c.primary, 70) }}>{t((hero.primaryCta||{}).label, "Get started")}</a>
+        <a href={t((hero.secondaryCta||{}).href, "/contact")} className="rounded-xl px-7 py-3 text-sm font-semibold" style={{ border: "1px solid " + mix(c.foreground, 20), color: c.foreground }}>{t((hero.secondaryCta||{}).label, "Talk to us")}</a>
+      </div>
+    </div>
+    <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.1 }} className="relative mx-auto mt-16 max-w-5xl">
+      <div className="overflow-hidden rounded-2xl" style={{ border: "1px solid " + mix(c.border, 70), boxShadow: "0 40px 80px -30px " + mix(c.primary, 45) }}>
+        <img src={pic("hero")} alt={t(hero.title, brand)} className="block w-full" style={{ aspectRatio: "16/9", objectFit: "cover" }} />
+      </div>
+    </motion.div>
+  </section>
+
+  {logos.length ? (
+  <section className="px-6 pb-12"><div className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-x-10 gap-y-4 opacity-70">{logos.map(function(l, i){ return (<span key={i} className="text-base font-bold" style={{ color: mix(c.foreground, 42), fontFamily: heading }}>{l}</span>); })}</div></section>) : null}
+
+  {feats.length ? (
+  <section id="features" className="px-6 py-20">
+    <div className="mx-auto max-w-2xl text-center"><h2 className="text-3xl font-bold tracking-tight sm:text-4xl" style={{ fontFamily: heading }}>{t(feat.title, "Built for scale")}</h2><p className="mt-3" style={{ color: mix(c.foreground, 62) }}>{t(feat.subtitle)}</p></div>
+    <div className="mx-auto mt-12 grid max-w-5xl auto-rows-[180px] grid-cols-2 gap-4 md:grid-cols-3">
+      {feats.map(function(f, i){ return (
+        <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.4, delay: i * 0.05 }} className={"relative overflow-hidden rounded-3xl p-6 " + (i === 0 ? "col-span-2 row-span-2" : "")} style={{ background: i === 0 ? mix(c.primary, 12) : mix(c.foreground, 4), border: "1px solid " + mix(c.border, 60) }}>
+          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: mix(c.primary, 18), color: c.primary }}><Icon name={f.icon} className="h-5 w-5" /></div>
+          <h3 className={"font-semibold " + (i === 0 ? "text-2xl" : "text-lg")} style={{ fontFamily: heading }}>{f.title}</h3>
+          <p className="mt-2 text-sm leading-relaxed" style={{ color: mix(c.foreground, 62) }}>{f.body}</p>
+        </motion.div>); })}
+    </div>
+  </section>) : null}
+
+  {stats.length ? (
+  <section className="px-6 py-16" style={{ background: mix(c.foreground, 3) }}><div className="mx-auto grid max-w-4xl gap-8 text-center sm:grid-cols-4">{stats.map(function(s, i){ return (<div key={i}><div className="text-4xl font-extrabold" style={{ fontFamily: heading, color: c.primary }}>{s.value}</div><div className="mt-1 text-xs font-semibold uppercase tracking-wide" style={{ color: mix(c.foreground, 60) }}>{s.label}</div></div>); })}</div></section>) : null}
+
+  {pricing.length ? (
+  <section id="pricing" className="px-6 py-20"><h2 className="mb-10 text-center text-3xl font-bold tracking-tight sm:text-4xl" style={{ fontFamily: heading }}>Pricing</h2><div className="mx-auto grid max-w-4xl gap-6 md:grid-cols-3">{pricing.map(function(p, i){ return (<div key={i} className="rounded-3xl p-7" style={{ background: p.highlighted ? mix(c.primary, 10) : mix(c.foreground, 4), border: "1px solid " + (p.highlighted ? c.primary : mix(c.border, 65)) }}><div className="text-sm font-semibold uppercase tracking-wide" style={{ color: mix(c.foreground, 60) }}>{p.name}</div><div className="mt-2 text-4xl font-extrabold" style={{ fontFamily: heading }}>{p.price}<span className="text-sm font-normal" style={{ color: mix(c.foreground, 55) }}>{t(p.period)}</span></div><ul className="mt-5 space-y-2">{arr(p.features).map(function(ft, j){ return (<li key={j} className="flex items-center gap-2 text-sm" style={{ color: mix(c.foreground, 75) }}><Icon name="Check" className="h-4 w-4" style={{ color: c.primary }} />{ft}</li>); })}</ul><a href={t((p.cta||{}).href, "/contact")} className="mt-6 block rounded-xl py-2.5 text-center text-sm font-bold" style={{ background: p.highlighted ? c.primary : "transparent", color: p.highlighted ? c.primaryForeground : c.foreground, border: p.highlighted ? "none" : "1px solid " + mix(c.foreground, 22) }}>{t((p.cta||{}).label, "Choose")}</a></div>); })}</div></section>) : null}
+
+  <section className="px-6 py-20"><div className="relative mx-auto max-w-4xl overflow-hidden rounded-3xl px-8 py-16 text-center" style={{ background: c.primary, color: c.primaryForeground }}><div className="pointer-events-none absolute left-1/2 top-0 h-64 w-96 -translate-x-1/2 rounded-full blur-[100px]" style={{ background: mix(c.primaryForeground, 25) }}></div><h2 className="relative text-3xl font-extrabold tracking-tight sm:text-5xl" style={{ fontFamily: heading }}>{t(cta.title, "Ship faster today")}</h2><p className="relative mx-auto mt-4 max-w-lg" style={{ color: mix(c.primaryForeground, 82) }}>{t(cta.body)}</p><a href={t((cta.button||{}).href, "/contact")} className="relative mt-8 inline-block rounded-xl px-8 py-3 text-sm font-bold" style={{ background: c.primaryForeground, color: c.primary }}>{t((cta.button||{}).label, "Get started")}</a></div></section>
+  ${FOOTER}
+</div>);
+`)
+
+/* Luxe brand / lookbook — magazine editorial, serif display, asymmetric grid.
+   Design language adapted from high-fashion editorial + bchiang v4 restraint. */
+const ATELIER_CODE = makeComponent(`
+var feats = arr(feat.items);
+var stats = arr(co.stats);
+var tess = arr(co.testimonials);
+var defMarq = ["Handcrafted","Sustainable","Timeless","Limited","Atelier-made"];
+var marq = arr(co.logos).length ? arr(co.logos) : defMarq;
+var gal = ["hero","look2","look3","showcase"];
+return (
+<div style={{ background: c.background, color: c.foreground, fontFamily: bodyFont }}>
+  ${NAV}
+  <section className="px-6 pt-16 pb-12">
+    <div className="mx-auto grid max-w-6xl items-center gap-10 md:grid-cols-2">
+      <div>
+        <span className="text-xs font-semibold uppercase tracking-[0.4em]" style={{ color: mix(c.foreground, 50) }}>{t(hero.eyebrow, "Maison")}</span>
+        <h1 className="mt-6 text-5xl leading-[1.05] tracking-tight sm:text-7xl" style={{ fontFamily: heading, fontWeight: 500 }}>{t(hero.title, brand)}</h1>
+        <p className="mt-7 max-w-md text-lg leading-relaxed" style={{ color: mix(c.foreground, 64) }}>{t(hero.subtitle)}</p>
+        <div className="mt-9 flex flex-wrap items-center gap-6">
+          <a href={t((hero.primaryCta||{}).href, "/products")} className="px-8 py-3.5 text-xs font-semibold uppercase tracking-widest transition-transform hover:-translate-y-0.5" style={{ background: c.foreground, color: c.background }}>{t((hero.primaryCta||{}).label, "Discover")}</a>
+          <a href={t((hero.secondaryCta||{}).href, "/about")} className="border-b pb-1 text-xs font-semibold uppercase tracking-widest" style={{ borderColor: c.foreground }}>{t((hero.secondaryCta||{}).label, "Our story")}</a>
+        </div>
+      </div>
+      <motion.div initial={{ opacity: 0, scale: 1.02 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.8 }} className="overflow-hidden">
+        <img src={pic("hero")} alt={t(hero.title, brand)} className="block w-full" style={{ aspectRatio: "4/5", objectFit: "cover" }} />
+      </motion.div>
+    </div>
+  </section>
+
+  <section className="overflow-hidden border-y py-4" style={{ borderColor: mix(c.border, 50) }}>
+    <motion.div className="flex gap-12 whitespace-nowrap pr-12" animate={{ x: ["0%", "-50%"] }} transition={{ duration: 26, repeat: Infinity, ease: "linear" }}>
+      {marq.concat(marq).map(function(l, i){ return (<span key={i} className="text-sm font-semibold uppercase tracking-[0.3em]" style={{ color: mix(c.foreground, 45) }}>{l}<span style={{ color: c.primary }}> — </span></span>); })}
+    </motion.div>
+  </section>
+
+  <section className="px-6 py-20">
+    <div className="mx-auto max-w-6xl">
+      <div className="mb-12 max-w-xl"><h2 className="text-3xl tracking-tight sm:text-5xl" style={{ fontFamily: heading, fontWeight: 500 }}>{t(feat.title, "The collection")}</h2><p className="mt-3" style={{ color: mix(c.foreground, 60) }}>{t(feat.subtitle)}</p></div>
+      <div className="grid gap-6 md:grid-cols-12">
+        {gal.map(function(g, i){ var spans = ["md:col-span-7","md:col-span-5","md:col-span-5","md:col-span-7"]; return (
+          <motion.div key={i} initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6, delay: i * 0.05 }} className={"group overflow-hidden " + spans[i % 4]}>
+            <div className="overflow-hidden"><img src={images[_img[g]] || imgAt(i)} alt={"look " + (i+1)} className="block w-full transition-transform duration-700 group-hover:scale-105" style={{ aspectRatio: i % 4 < 2 ? "4/3" : "3/4", objectFit: "cover" }} /></div>
+            <div className="mt-4 flex items-baseline justify-between"><span className="text-lg" style={{ fontFamily: heading }}>{t((feats[i]||{}).title, "Piece N°" + (i+1))}</span><span className="text-xs uppercase tracking-widest" style={{ color: mix(c.foreground, 50) }}>{t((feats[i]||{}).body, "")}</span></div>
+          </motion.div>); })}
+      </div>
+    </div>
+  </section>
+
+  {tess.length ? (
+  <section className="px-6 py-24 text-center" style={{ background: mix(c.foreground, 4) }}>
+    <div className="mx-auto max-w-3xl"><blockquote className="text-2xl leading-snug sm:text-4xl" style={{ fontFamily: heading, fontWeight: 500 }}>“{(tess[0]||{}).quote}”</blockquote><p className="mt-7 text-xs font-semibold uppercase tracking-widest" style={{ color: mix(c.foreground, 55) }}>{(tess[0]||{}).name}{t((tess[0]||{}).role) ? " — " + (tess[0]||{}).role : ""}</p></div>
+  </section>) : null}
+
+  {stats.length ? (
+  <section className="px-6 py-16"><div className="mx-auto grid max-w-4xl gap-8 text-center sm:grid-cols-3">{stats.map(function(s, i){ return (<div key={i}><div className="text-5xl" style={{ fontFamily: heading, color: c.primary, fontWeight: 500 }}>{s.value}</div><div className="mt-2 text-xs font-semibold uppercase tracking-widest" style={{ color: mix(c.foreground, 55) }}>{s.label}</div></div>); })}</div></section>) : null}
+
+  <section className="px-6 pb-24 pt-8"><div className="mx-auto max-w-5xl px-8 py-20 text-center" style={{ background: c.foreground, color: c.background }}><h2 className="mx-auto max-w-2xl text-3xl tracking-tight sm:text-5xl" style={{ fontFamily: heading, fontWeight: 500 }}>{t(cta.title, "Visit the atelier")}</h2><p className="mx-auto mt-5 max-w-md" style={{ color: mix(c.background, 72) }}>{t(cta.body)}</p><a href={t((cta.button||{}).href, "/contact")} className="mt-9 inline-block px-9 py-3.5 text-xs font-semibold uppercase tracking-widest" style={{ background: c.background, color: c.foreground }}>{t((cta.button||{}).label, "Book an appointment")}</a></div></section>
+  ${FOOTER}
+</div>);
+`)
+
+/* Brutalist kinetic — oversized uppercase type, hard borders, marquee.
+   Design language adapted from award-winning kinetic/brutalist sites. */
+const KINETIC_CODE = makeComponent(`
+var feats = arr(feat.items);
+var logos = arr(co.logos);
+var stats = arr(co.stats);
+var marq = logos.length ? logos : ["Design","Build","Ship","Repeat"];
+return (
+<div style={{ background: c.background, color: c.foreground, fontFamily: bodyFont }}>
+  ${NAV}
+  <section className="px-6 pt-16 pb-10">
+    <div className="mx-auto max-w-6xl">
+      <div className="mb-6 flex flex-wrap items-center gap-3 text-xs font-bold uppercase tracking-widest">
+        <span className="px-3 py-1" style={{ background: c.primary, color: c.primaryForeground }}>{t(hero.eyebrow, "New")}</span>
+        <span style={{ color: mix(c.foreground, 55) }}>{t((co.footer||{}).tagline, "Independent · Worldwide")}</span>
+      </div>
+      <h1 className="text-6xl font-black uppercase leading-[0.85] tracking-tighter sm:text-9xl" style={{ fontFamily: heading }}>{t(hero.title, brand)}</h1>
+      <div className="mt-8 grid gap-6 border-t-2 pt-8 md:grid-cols-[1fr_auto] md:items-center" style={{ borderColor: c.foreground }}>
+        <p className="max-w-lg text-lg" style={{ color: mix(c.foreground, 72) }}>{t(hero.subtitle)}</p>
+        <a href={t((hero.primaryCta||{}).href, "/products")} className="inline-flex w-fit items-center gap-2 px-8 py-4 text-sm font-bold uppercase tracking-widest" style={{ background: c.foreground, color: c.background }}>{t((hero.primaryCta||{}).label, "Enter")}<Icon name="ArrowRight" className="h-4 w-4" /></a>
+      </div>
+    </div>
+  </section>
+
+  <section className="overflow-hidden border-y-2 py-4" style={{ borderColor: c.foreground, background: c.primary }}>
+    <motion.div className="flex gap-10 whitespace-nowrap pr-10" animate={{ x: ["0%", "-50%"] }} transition={{ duration: 18, repeat: Infinity, ease: "linear" }}>
+      {marq.concat(marq).map(function(l, i){ return (<span key={i} className="text-3xl font-black uppercase tracking-tight" style={{ fontFamily: heading, color: c.primaryForeground }}>{l}<span> / </span></span>); })}
+    </motion.div>
+  </section>
+
+  {feats.length ? (
+  <section className="px-6 py-16">
+    <div className="mx-auto grid max-w-6xl sm:grid-cols-2 lg:grid-cols-3" style={{ borderTop: "2px solid " + c.foreground, borderLeft: "2px solid " + c.foreground }}>
+      {feats.map(function(f, i){ return (
+        <motion.div key={i} initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ duration: 0.3, delay: i * 0.05 }} className="p-7" style={{ borderRight: "2px solid " + c.foreground, borderBottom: "2px solid " + c.foreground }}>
+          <div className="mb-4 text-4xl font-black" style={{ fontFamily: heading, color: c.primary }}>{"0" + (i+1)}</div>
+          <h3 className="text-xl font-bold uppercase" style={{ fontFamily: heading }}>{f.title}</h3>
+          <p className="mt-2 text-sm leading-relaxed" style={{ color: mix(c.foreground, 64) }}>{f.body}</p>
+        </motion.div>); })}
+    </div>
+  </section>) : null}
+
+  {(t(show.title) || arr(show.bullets).length) ? (
+  <section className="px-6 py-16">
+    <div className="mx-auto grid max-w-6xl items-center gap-10 lg:grid-cols-2">
+      <div className="overflow-hidden" style={{ border: "2px solid " + c.foreground }}><img src={pic("hero")} alt={t(show.title, brand)} className="block w-full" style={{ aspectRatio: "4/3", objectFit: "cover" }} /></div>
+      <div>
+        <h2 className="text-4xl font-black uppercase tracking-tight sm:text-5xl" style={{ fontFamily: heading }}>{t(show.title)}</h2>
+        <p className="mt-4 text-base" style={{ color: mix(c.foreground, 66) }}>{t(show.body)}</p>
+        <ul className="mt-6 space-y-3">{arr(show.bullets).map(function(b, i){ return (<li key={i} className="flex items-start gap-3 border-b pb-3 text-sm font-medium" style={{ borderColor: mix(c.foreground, 25) }}><span style={{ color: c.primary }}>→</span>{b}</li>); })}</ul>
+      </div>
+    </div>
+  </section>) : null}
+
+  {stats.length ? (
+  <section className="px-6 py-12"><div className="mx-auto grid max-w-6xl sm:grid-cols-3" style={{ borderTop: "2px solid " + c.foreground, borderLeft: "2px solid " + c.foreground }}>{stats.map(function(s, i){ return (<div key={i} className="p-8 text-center" style={{ borderRight: "2px solid " + c.foreground, borderBottom: "2px solid " + c.foreground }}><div className="text-5xl font-black" style={{ fontFamily: heading, color: c.primary }}>{s.value}</div><div className="mt-2 text-xs font-bold uppercase tracking-widest" style={{ color: mix(c.foreground, 60) }}>{s.label}</div></div>); })}</div></section>) : null}
+
+  <section className="px-6 py-16"><div className="mx-auto max-w-6xl px-8 py-20 text-center" style={{ background: c.foreground, color: c.background }}><h2 className="text-4xl font-black uppercase tracking-tight sm:text-7xl" style={{ fontFamily: heading }}>{t(cta.title, "Let's go")}</h2><p className="mx-auto mt-5 max-w-md" style={{ color: mix(c.background, 70) }}>{t(cta.body)}</p><a href={t((cta.button||{}).href, "/contact")} className="mt-9 inline-block px-10 py-4 text-sm font-bold uppercase tracking-widest" style={{ background: c.primary, color: c.primaryForeground }}>{t((cta.button||{}).label, "Get in touch")}</a></div></section>
+  ${FOOTER}
+</div>);
+`)
+
+/* Immersive full-bleed — cinematic hero photo + alternating scroll story.
+   Design language adapted from awwwards hospitality / travel / real-estate. */
+const HORIZON_CODE = makeComponent(`
+var feats = arr(feat.items);
+var stats = arr(co.stats);
+var tess = arr(co.testimonials);
+return (
+<div style={{ background: c.background, color: c.foreground, fontFamily: bodyFont }}>
+  ${NAV}
+  <section className="relative">
+    <div className="relative h-[78vh] min-h-[520px] w-full overflow-hidden">
+      <img src={pic("hero")} alt={t(hero.title, brand)} className="absolute inset-0 h-full w-full object-cover" />
+      <div className="absolute inset-0" style={{ background: "linear-gradient(to top, " + mix(c.background, 90) + ", " + mix(c.background, 18) + ")" }}></div>
+      <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }} className="absolute inset-x-0 bottom-0 px-6 pb-16">
+        <div className="mx-auto max-w-6xl">
+          <span className="text-xs font-semibold uppercase tracking-[0.4em]" style={{ color: mix(c.foreground, 78) }}>{t(hero.eyebrow, "Welcome")}</span>
+          <h1 className="mt-4 max-w-3xl text-5xl font-bold leading-[1.05] tracking-tight sm:text-7xl" style={{ fontFamily: heading }}>{t(hero.title, brand)}</h1>
+          <p className="mt-5 max-w-xl text-lg" style={{ color: mix(c.foreground, 82) }}>{t(hero.subtitle)}</p>
+          <div className="mt-8 flex flex-wrap gap-4">
+            <a href={t((hero.primaryCta||{}).href, "/products")} className="rounded-full px-8 py-3.5 text-sm font-semibold" style={{ background: c.primary, color: c.primaryForeground }}>{t((hero.primaryCta||{}).label, "Explore")}</a>
+            <a href={t((hero.secondaryCta||{}).href, "/contact")} className="rounded-full px-8 py-3.5 text-sm font-semibold" style={{ border: "1px solid " + mix(c.foreground, 45), color: c.foreground }}>{t((hero.secondaryCta||{}).label, "Reserve")}</a>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  </section>
+
+  {feats.length ? (
+  <section className="px-6 py-24">
+    <div className="mx-auto max-w-3xl text-center"><h2 className="text-3xl font-bold tracking-tight sm:text-5xl" style={{ fontFamily: heading }}>{t(feat.title, "An experience apart")}</h2><p className="mt-4" style={{ color: mix(c.foreground, 64) }}>{t(feat.subtitle)}</p></div>
+    <div className="mx-auto mt-16 max-w-5xl space-y-20">
+      {feats.map(function(f, i){ var rev = i % 2 === 1; return (
+        <motion.div key={i} initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }} className="grid items-center gap-10 md:grid-cols-2">
+          <div className={"overflow-hidden rounded-2xl " + (rev ? "md:order-2" : "")}><img src={imgAt(i + 1)} alt={f.title} className="block w-full" style={{ aspectRatio: "4/3", objectFit: "cover" }} /></div>
+          <div className={rev ? "md:order-1" : ""}><div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full" style={{ background: mix(c.primary, 16), color: c.primary }}><Icon name={f.icon} className="h-5 w-5" /></div><h3 className="text-2xl font-bold" style={{ fontFamily: heading }}>{f.title}</h3><p className="mt-3 leading-relaxed" style={{ color: mix(c.foreground, 66) }}>{f.body}</p></div>
+        </motion.div>); })}
+    </div>
+  </section>) : null}
+
+  {stats.length ? (
+  <section className="px-6 py-16" style={{ background: mix(c.foreground, 4) }}><div className="mx-auto grid max-w-4xl gap-8 text-center sm:grid-cols-3">{stats.map(function(s, i){ return (<div key={i}><div className="text-5xl font-bold" style={{ fontFamily: heading, color: c.primary }}>{s.value}</div><div className="mt-2 text-xs font-semibold uppercase tracking-widest" style={{ color: mix(c.foreground, 60) }}>{s.label}</div></div>); })}</div></section>) : null}
+
+  {tess.length ? (
+  <section className="px-6 py-24 text-center"><div className="mx-auto max-w-3xl"><Icon name="Quote" className="mx-auto h-8 w-8" style={{ color: mix(c.primary, 60) }} /><blockquote className="mt-6 text-2xl font-medium leading-snug sm:text-3xl" style={{ fontFamily: heading }}>“{(tess[0]||{}).quote}”</blockquote><p className="mt-6 text-sm font-semibold">{(tess[0]||{}).name}<span className="block font-normal" style={{ color: mix(c.foreground, 55) }}>{t((tess[0]||{}).role)}</span></p></div></section>) : null}
+
+  <section className="relative overflow-hidden px-6 py-28 text-center">
+    <img src={pic("showcase")} alt="" className="absolute inset-0 h-full w-full object-cover" aria-hidden="true" />
+    <div className="absolute inset-0" style={{ background: mix(c.background, 80) }}></div>
+    <div className="relative mx-auto max-w-2xl"><h2 className="text-4xl font-bold tracking-tight sm:text-5xl" style={{ fontFamily: heading }}>{t(cta.title, "Begin your journey")}</h2><p className="mx-auto mt-4 max-w-md" style={{ color: mix(c.foreground, 74) }}>{t(cta.body)}</p><a href={t((cta.button||{}).href, "/contact")} className="mt-8 inline-block rounded-full px-9 py-3.5 text-sm font-semibold" style={{ background: c.primary, color: c.primaryForeground }}>{t((cta.button||{}).label, "Reserve now")}</a></div>
+  </section>
+  ${FOOTER}
+</div>);
+`)
+
+/* Vibrant gradient / glass — colorful creative startup with glassmorphism.
+   Design language adapted from awwwards gradient/aurora creative sites. */
+const PRISM_CODE = makeComponent(`
+var feats = arr(feat.items);
+var logos = arr(co.logos);
+var stats = arr(co.stats);
+var pricing = arr(co.pricing);
+return (
+<div style={{ background: c.background, color: c.foreground, fontFamily: bodyFont }}>
+  ${NAV}
+  <section className="relative overflow-hidden px-6 pt-24 pb-20 text-center">
+    <div className="pointer-events-none absolute -left-24 top-0 h-80 w-80 rounded-full blur-[120px]" style={{ background: mix(c.primary, 45) }} aria-hidden="true"></div>
+    <div className="pointer-events-none absolute -right-24 top-32 h-96 w-96 rounded-full blur-[130px]" style={{ background: mix(c.foreground, 12) }} aria-hidden="true"></div>
+    <div className="relative mx-auto max-w-3xl">
+      {t(hero.eyebrow) ? (<span className="mb-6 inline-block rounded-full px-4 py-1.5 text-xs font-semibold" style={{ background: mix(c.primary, 14), color: c.primary, border: "1px solid " + mix(c.primary, 30) }}>{hero.eyebrow}</span>) : null}
+      <h1 className="text-balance text-5xl font-extrabold leading-[1.02] tracking-tight sm:text-7xl" style={{ fontFamily: heading, backgroundImage: "linear-gradient(120deg, " + c.foreground + ", " + c.primary + ")", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>{t(hero.title, brand)}</h1>
+      <p className="mx-auto mt-7 max-w-xl text-lg" style={{ color: mix(c.foreground, 66) }}>{t(hero.subtitle)}</p>
+      <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+        <a href={t((hero.primaryCta||{}).href, "/products")} className="rounded-full px-7 py-3 text-sm font-semibold transition-transform hover:-translate-y-0.5" style={{ background: c.primary, color: c.primaryForeground }}>{t((hero.primaryCta||{}).label, "Get started")}</a>
+        <a href={t((hero.secondaryCta||{}).href, "/contact")} className="rounded-full px-7 py-3 text-sm font-semibold" style={{ border: "1px solid " + mix(c.foreground, 22), color: c.foreground }}>{t((hero.secondaryCta||{}).label, "Learn more")}</a>
+      </div>
+    </div>
+    <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }} className="relative mx-auto mt-14 max-w-4xl overflow-hidden rounded-3xl" style={{ border: "1px solid " + mix(c.border, 70) }}><img src={pic("hero")} alt={t(hero.title, brand)} className="block w-full" style={{ aspectRatio: "16/9", objectFit: "cover" }} /></motion.div>
+  </section>
+
+  {feats.length ? (
+  <section id="features" className="px-6 py-20">
+    <div className="mx-auto max-w-2xl text-center"><h2 className="text-3xl font-bold tracking-tight sm:text-4xl" style={{ fontFamily: heading }}>{t(feat.title, "Everything in one place")}</h2><p className="mt-3" style={{ color: mix(c.foreground, 62) }}>{t(feat.subtitle)}</p></div>
+    <div className="mx-auto mt-12 grid max-w-5xl gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      {feats.map(function(f, i){ return (
+        <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.4, delay: i * 0.05 }} className="rounded-3xl p-6 backdrop-blur" style={{ background: mix(c.foreground, 5), border: "1px solid " + mix(c.border, 60) }}>
+          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl" style={{ background: "linear-gradient(135deg, " + c.primary + ", " + mix(c.primary, 50) + ")", color: c.primaryForeground }}><Icon name={f.icon} className="h-5 w-5" /></div>
+          <h3 className="text-lg font-semibold" style={{ fontFamily: heading }}>{f.title}</h3>
+          <p className="mt-2 text-sm leading-relaxed" style={{ color: mix(c.foreground, 62) }}>{f.body}</p>
+        </motion.div>); })}
+    </div>
+  </section>) : null}
+
+  {logos.length ? (<section className="px-6 pb-8"><div className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-x-10 gap-y-4 opacity-70">{logos.map(function(l, i){ return (<span key={i} className="text-base font-bold" style={{ color: mix(c.foreground, 42), fontFamily: heading }}>{l}</span>); })}</div></section>) : null}
+
+  {stats.length ? (
+  <section className="px-6 py-16"><div className="mx-auto grid max-w-4xl gap-8 text-center sm:grid-cols-4">{stats.map(function(s, i){ return (<div key={i}><div className="text-4xl font-extrabold" style={{ fontFamily: heading, color: c.primary }}>{s.value}</div><div className="mt-1 text-xs font-semibold uppercase tracking-wide" style={{ color: mix(c.foreground, 60) }}>{s.label}</div></div>); })}</div></section>) : null}
+
+  {pricing.length ? (
+  <section id="pricing" className="px-6 py-20"><h2 className="mb-10 text-center text-3xl font-bold tracking-tight sm:text-4xl" style={{ fontFamily: heading }}>Pricing</h2><div className="mx-auto grid max-w-4xl gap-6 md:grid-cols-3">{pricing.map(function(p, i){ return (<div key={i} className="rounded-3xl p-7 backdrop-blur" style={{ background: p.highlighted ? "linear-gradient(160deg, " + mix(c.primary, 16) + ", " + mix(c.foreground, 4) + ")" : mix(c.foreground, 4), border: "1px solid " + (p.highlighted ? c.primary : mix(c.border, 65)) }}><div className="text-sm font-semibold uppercase tracking-wide" style={{ color: mix(c.foreground, 60) }}>{p.name}</div><div className="mt-2 text-4xl font-extrabold" style={{ fontFamily: heading }}>{p.price}<span className="text-sm font-normal" style={{ color: mix(c.foreground, 55) }}>{t(p.period)}</span></div><ul className="mt-5 space-y-2">{arr(p.features).map(function(ft, j){ return (<li key={j} className="flex items-center gap-2 text-sm" style={{ color: mix(c.foreground, 75) }}><Icon name="Check" className="h-4 w-4" style={{ color: c.primary }} />{ft}</li>); })}</ul><a href={t((p.cta||{}).href, "/contact")} className="mt-6 block rounded-full py-2.5 text-center text-sm font-bold" style={{ background: p.highlighted ? c.primary : "transparent", color: p.highlighted ? c.primaryForeground : c.foreground, border: p.highlighted ? "none" : "1px solid " + mix(c.foreground, 22) }}>{t((p.cta||{}).label, "Choose")}</a></div>); })}</div></section>) : null}
+
+  <section className="px-6 py-20"><div className="relative mx-auto max-w-4xl overflow-hidden rounded-[2rem] px-8 py-16 text-center" style={{ background: "linear-gradient(135deg, " + c.primary + ", " + mix(c.primary, 55) + ")", color: c.primaryForeground }}><h2 className="text-3xl font-extrabold tracking-tight sm:text-5xl" style={{ fontFamily: heading }}>{t(cta.title, "Ready to create?")}</h2><p className="mx-auto mt-4 max-w-lg" style={{ color: mix(c.primaryForeground, 82) }}>{t(cta.body)}</p><a href={t((cta.button||{}).href, "/contact")} className="mt-8 inline-block rounded-full px-8 py-3 text-sm font-bold" style={{ background: c.primaryForeground, color: c.primary }}>{t((cta.button||{}).label, "Start now")}</a></div></section>
+  ${FOOTER}
+</div>);
+`)
+
 export const LANDING_TEMPLATES: LandingTemplate[] = [
   {
     id: 'aurora-saas',
@@ -1947,6 +2308,189 @@ export const LANDING_TEMPLATES: LandingTemplate[] = [
       },
     },
     code: N8N_CODE,
+  },
+  {
+    id: 'studio-noir',
+    name: 'Studio Noir',
+    category: 'Agency / Creative Studio',
+    description:
+      'Awwwards-grade dark editorial studio site: oversized display headline, an infinite marquee strip, an asymmetric "selected work" image grid with hover reveals, a numbered services list and a bold full-bleed CTA. For design studios, agencies, creative brands and high-end portfolios.',
+    source: {
+      repo: 'studio-freight/lenis',
+      url: 'https://github.com/studio-freight/lenis',
+      stars: 8000,
+      author: 'Studio Freight',
+    },
+    themeId: 'noir-luxe',
+    designId: 'editorial-luxury',
+    imageSlots: [
+      { key: 'hero', purpose: 'Hero / featured project — striking wide editorial photograph or art-directed render' },
+      { key: 'showcase', purpose: 'Second featured project image, art-directed' },
+      { key: 'work3', purpose: 'Third project thumbnail in the work grid' },
+      { key: 'work4', purpose: 'Fourth project thumbnail in the work grid' },
+    ],
+    placeholder: {
+      brand: 'Noir',
+      hero: {
+        eyebrow: 'Independent studio',
+        title: 'We craft brands that move',
+        subtitle: 'A design studio building identities, websites and motion for ambitious teams.',
+        primaryCta: { label: 'View work', href: '/products' },
+        secondaryCta: { label: 'Start a project', href: '/contact' },
+      },
+    },
+    code: STUDIO_NOIR_CODE,
+  },
+  {
+    id: 'lumen-tech',
+    name: 'Lumen',
+    category: 'SaaS / Tech (Premium)',
+    description:
+      'Awwwards-grade premium SaaS landing: a glowing gradient-mesh hero with an animated product shot, a varied bento feature grid, a logo strip, a metrics band, three-tier pricing and a luminous CTA. Linear/Vercel-class polish for software, AI tools and modern tech platforms.',
+    source: {
+      repo: 'magicuidesign/magicui',
+      url: 'https://github.com/magicuidesign/magicui',
+      stars: 18000,
+      author: 'Magic UI',
+    },
+    themeId: 'midnight-aurora',
+    designId: 'aurora-saas',
+    imageSlots: [
+      { key: 'hero', purpose: 'Hero product UI screenshot / dashboard mockup glowing on a dark gradient' },
+    ],
+    placeholder: {
+      brand: 'Lumen',
+      hero: {
+        eyebrow: 'New · v2 is live',
+        title: 'The platform that ships itself',
+        subtitle: 'Plan, build and launch on one luminous, lightning-fast workspace.',
+        primaryCta: { label: 'Get started', href: '/products' },
+        secondaryCta: { label: 'Talk to us', href: '/contact' },
+      },
+    },
+    code: LUMEN_CODE,
+  },
+  {
+    id: 'atelier-lux',
+    name: 'Atelier',
+    category: 'Luxury Brand / Lookbook',
+    description:
+      'Awwwards-grade luxury brand / lookbook site: magazine editorial layout with a serif display headline, a split hero portrait, an infinite values marquee, an asymmetric collection grid, a single oversized quote and an elegant appointment CTA. For fashion, beauty, jewelry, hospitality and high-end boutiques.',
+    source: {
+      repo: 'bchiang7/v4',
+      url: 'https://github.com/bchiang7/v4',
+      stars: 8500,
+      author: 'Brittany Chiang',
+    },
+    themeId: 'champagne-serif',
+    designId: 'editorial-luxury',
+    imageSlots: [
+      { key: 'hero', purpose: 'Tall art-directed brand / fashion portrait, magazine cover quality' },
+      { key: 'look2', purpose: 'Second lookbook / collection image' },
+      { key: 'look3', purpose: 'Third lookbook / collection image' },
+      { key: 'showcase', purpose: 'Fourth lookbook / detail image' },
+    ],
+    placeholder: {
+      brand: 'Atelier',
+      hero: {
+        eyebrow: 'Maison',
+        title: 'Quietly extraordinary',
+        subtitle: 'A house of handcrafted pieces, made in limited series for those who notice the details.',
+        primaryCta: { label: 'Discover', href: '/products' },
+        secondaryCta: { label: 'Our story', href: '/about' },
+      },
+    },
+    code: ATELIER_CODE,
+  },
+  {
+    id: 'kinetic-brutalist',
+    name: 'Kinetic',
+    category: 'Agency / Bold Brutalist',
+    description:
+      'Awwwards-grade brutalist kinetic site: enormous uppercase display headline, hard 2px borders, a high-contrast running marquee band, a gridded numbered feature matrix and a blunt full-bleed CTA. For bold agencies, type-driven studios, music/streetwear and statement brands.',
+    source: {
+      repo: 'adrianhajdin/award-winning-website',
+      url: 'https://github.com/adrianhajdin/award-winning-website',
+      stars: 1000,
+      author: 'JavaScript Mastery',
+    },
+    themeId: 'mono-brutalist',
+    designId: 'brutalist-bold',
+    imageSlots: [
+      { key: 'hero', purpose: 'Bold art-directed image for the showcase block (high contrast)' },
+    ],
+    placeholder: {
+      brand: 'KINETIC',
+      hero: {
+        eyebrow: 'New',
+        title: 'Make it move',
+        subtitle: 'A bold studio for brands that refuse to blend in.',
+        primaryCta: { label: 'Enter', href: '/products' },
+        secondaryCta: { label: 'Contact', href: '/contact' },
+      },
+    },
+    code: KINETIC_CODE,
+  },
+  {
+    id: 'horizon-immersive',
+    name: 'Horizon',
+    category: 'Hospitality / Travel & Real Estate',
+    description:
+      'Awwwards-grade immersive site: a cinematic full-bleed hero photograph with a gradient scrim, alternating image/text scroll-story sections, a metrics band, a single editorial testimonial and a full-bleed photo CTA. For hotels, resorts, travel, restaurants, real estate and experiences.',
+    source: {
+      repo: 'olivierlarose/awwwards-landing-page',
+      url: 'https://github.com/olivierlarose/awwwards-landing-page',
+      stars: 215,
+      author: 'Olivier Larose',
+    },
+    themeId: 'forest-deep',
+    designId: 'editorial-luxury',
+    imageSlots: [
+      { key: 'hero', purpose: 'Cinematic full-bleed hero photograph — destination / property / interior' },
+      { key: 'scene2', purpose: 'Story image 1 (alternating section)' },
+      { key: 'scene3', purpose: 'Story image 2 (alternating section)' },
+      { key: 'showcase', purpose: 'Atmospheric full-bleed image behind the closing CTA' },
+    ],
+    placeholder: {
+      brand: 'Horizon',
+      hero: {
+        eyebrow: 'Welcome',
+        title: 'Where the world slows down',
+        subtitle: 'A sanctuary of light, landscape and quiet luxury.',
+        primaryCta: { label: 'Explore', href: '/products' },
+        secondaryCta: { label: 'Reserve', href: '/contact' },
+      },
+    },
+    code: HORIZON_CODE,
+  },
+  {
+    id: 'prism-vibrant',
+    name: 'Prism',
+    category: 'Creative / Startup (Vibrant)',
+    description:
+      'Awwwards-grade vibrant gradient site: aurora blobs behind a gradient-clipped headline, a glassmorphism feature grid, a logo strip, a metrics band, three-tier pricing and a saturated gradient CTA. For creative startups, web3, design tools and playful modern brands.',
+    source: {
+      repo: 'aceternity/ui',
+      url: 'https://github.com/aceternity/ui',
+      stars: 5000,
+      author: 'Manu Arora',
+    },
+    themeId: 'magenta-pop',
+    designId: 'aurora-saas',
+    imageSlots: [
+      { key: 'hero', purpose: 'Colorful hero product / artwork screenshot on a vibrant gradient' },
+    ],
+    placeholder: {
+      brand: 'Prism',
+      hero: {
+        eyebrow: 'Now in beta',
+        title: 'Create in full color',
+        subtitle: 'The vibrant workspace for teams that make beautiful things.',
+        primaryCta: { label: 'Get started', href: '/products' },
+        secondaryCta: { label: 'Learn more', href: '/contact' },
+      },
+    },
+    code: PRISM_CODE,
   },
 ]
 
