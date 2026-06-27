@@ -1763,6 +1763,149 @@ return (
 </div>);
 `)
 
+/* ---- B-mode: faithful ports of genuinely MIT-licensed multi-page repos ---- */
+
+/**
+ * Startup — faithful port of NextJSTemplates/startup-nextjs (MIT).
+ * Reproduces its signature SaaS look: a big centered hero over soft gradient
+ * orbs, a grayscale brand strip, an icon-tile feature grid, a checklist "about"
+ * block with an image, star testimonials, a 3-up pricing table and a CTA band.
+ * All copy/imagery is wired to the content slots so the AI only swaps content.
+ */
+const STARTUP_CODE = makeComponent(`
+var feats = arr(feat.items);
+var logos = arr(co.logos);
+var stats = arr(co.stats);
+var pricing = arr(co.pricing);
+var testi = arr(co.testimonials);
+var bullets = arr(show.bullets);
+return (
+<div style={{ background: c.background, color: c.foreground, fontFamily: bodyFont }}>
+  ${NAV}
+  <section className="relative overflow-hidden px-6 pt-24 pb-24 text-center">
+    <div className="pointer-events-none absolute right-0 top-0 h-[460px] w-[460px] translate-x-1/4 -translate-y-1/4 rounded-full blur-[120px]" style={{ background: mix(c.primary, 28) }} aria-hidden="true"></div>
+    <div className="pointer-events-none absolute left-0 bottom-0 h-72 w-72 -translate-x-1/4 rounded-full blur-[120px]" style={{ background: mix(c.primary, 16) }} aria-hidden="true"></div>
+    <div className="relative mx-auto max-w-3xl">
+      {t(hero.eyebrow) ? (<span className="mb-5 inline-block rounded-full px-4 py-1.5 text-xs font-semibold" style={{ background: mix(c.primary, 14), color: c.primary }}>{hero.eyebrow}</span>) : null}
+      <h1 className="text-4xl font-bold leading-tight tracking-tight sm:text-5xl md:text-6xl" style={{ fontFamily: heading }}>{t(hero.title, brand)}</h1>
+      <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed" style={{ color: mix(c.foreground, 62) }}>{t(hero.subtitle)}</p>
+      <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+        <a href={t((hero.primaryCta||{}).href, "/products")} className="rounded-md px-8 py-4 text-base font-semibold transition-colors" style={{ background: c.primary, color: c.primaryForeground }}>{t((hero.primaryCta||{}).label, "Get started")}</a>
+        <a href={t((hero.secondaryCta||{}).href, "/contact")} className="rounded-md px-8 py-4 text-base font-semibold" style={{ background: mix(c.foreground, 8), color: c.foreground }}>{t((hero.secondaryCta||{}).label, "Talk to us")}</a>
+      </div>
+    </div>
+  </section>
+
+  {logos.length ? (<section className="px-6 pb-14"><div className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-x-12 gap-y-5 opacity-60">{logos.map(function(l, i){ return (<span key={i} className="text-lg font-bold tracking-tight" style={{ color: mix(c.foreground, 50), fontFamily: heading }}>{l}</span>); })}</div></section>) : null}
+
+  {feats.length ? (
+  <section id="features" className="px-6 py-20" style={{ background: mix(c.foreground, 3) }}>
+    <div className="mx-auto max-w-2xl text-center"><h2 className="text-3xl font-bold tracking-tight sm:text-4xl" style={{ fontFamily: heading }}>{t(feat.title, "Built to launch faster")}</h2><p className="mt-4 text-base" style={{ color: mix(c.foreground, 62) }}>{t(feat.subtitle)}</p></div>
+    <div className="mx-auto mt-14 grid max-w-5xl gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
+      {feats.map(function(f, i){ return (
+        <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.4, delay: i * 0.05 }}>
+          <div className="mb-6 flex h-[70px] w-[70px] items-center justify-center rounded-md" style={{ background: mix(c.primary, 12), color: c.primary }}><Icon name={f.icon} className="h-8 w-8" /></div>
+          <h3 className="mb-3 text-xl font-bold" style={{ fontFamily: heading }}>{f.title}</h3>
+          <p className="text-base leading-relaxed" style={{ color: mix(c.foreground, 60) }}>{f.body}</p>
+        </motion.div>); })}
+    </div>
+  </section>) : null}
+
+  {(t(show.title) || bullets.length) ? (
+  <section className="px-6 py-24"><div className="mx-auto grid max-w-6xl items-center gap-12 md:grid-cols-2">
+    <div>
+      <h2 className="text-3xl font-bold tracking-tight sm:text-4xl" style={{ fontFamily: heading }}>{t(show.title, "Everything you need, nothing you don't")}</h2>
+      <p className="mt-5 text-base leading-relaxed" style={{ color: mix(c.foreground, 62) }}>{t(show.body)}</p>
+      <ul className="mt-8 space-y-4">{bullets.map(function(b, i){ return (<li key={i} className="flex items-start gap-3"><span className="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full" style={{ background: mix(c.primary, 14), color: c.primary }}><Icon name="Check" className="h-4 w-4" /></span><span className="text-base" style={{ color: mix(c.foreground, 78) }}>{b}</span></li>); })}</ul>
+      {t((show.cta||{}).label) ? (<a href={t((show.cta||{}).href, "/contact")} className="mt-8 inline-block rounded-md px-7 py-3 text-sm font-semibold" style={{ background: c.primary, color: c.primaryForeground }}>{(show.cta||{}).label}</a>) : null}
+    </div>
+    <div className="overflow-hidden rounded-xl" style={{ border: "1px solid " + mix(c.border, 60) }}><img src={pic("showcase")} alt={t(show.title, brand)} className="block w-full" style={{ aspectRatio: "4/3", objectFit: "cover" }} /></div>
+  </div></section>) : null}
+
+  {stats.length ? (
+  <section className="px-6 py-16" style={{ background: c.primary, color: c.primaryForeground }}><div className="mx-auto grid max-w-4xl gap-8 text-center sm:grid-cols-4">{stats.map(function(s, i){ return (<div key={i}><div className="text-4xl font-extrabold" style={{ fontFamily: heading }}>{s.value}</div><div className="mt-1 text-xs font-semibold uppercase tracking-wide" style={{ color: mix(c.primaryForeground, 78) }}>{s.label}</div></div>); })}</div></section>) : null}
+
+  {testi.length ? (
+  <section className="px-6 py-24" style={{ background: mix(c.foreground, 3) }}>
+    <div className="mx-auto max-w-2xl text-center"><h2 className="text-3xl font-bold tracking-tight sm:text-4xl" style={{ fontFamily: heading }}>What our clients say</h2></div>
+    <div className="mx-auto mt-12 grid max-w-5xl gap-6 md:grid-cols-3">{testi.map(function(tm, i){ return (
+      <div key={i} className="rounded-md p-8" style={{ background: c.background, border: "1px solid " + mix(c.border, 60) }}>
+        <div className="mb-4 flex gap-1">{[0,1,2,3,4].map(function(s){ return (<Icon key={s} name="Star" className="h-4 w-4" style={{ color: c.primary }} />); })}</div>
+        <p className="text-base leading-relaxed" style={{ color: mix(c.foreground, 74) }}>{tm.quote}</p>
+        <div className="mt-6"><div className="text-sm font-bold" style={{ fontFamily: heading }}>{tm.name}</div><div className="text-xs" style={{ color: mix(c.foreground, 55) }}>{t(tm.role)}</div></div>
+      </div>); })}</div>
+  </section>) : null}
+
+  {pricing.length ? (
+  <section id="pricing" className="px-6 py-24"><div className="mx-auto max-w-2xl text-center"><h2 className="text-3xl font-bold tracking-tight sm:text-4xl" style={{ fontFamily: heading }}>Simple, transparent pricing</h2></div><div className="mx-auto mt-14 grid max-w-5xl gap-8 md:grid-cols-3">{pricing.map(function(p, i){ return (<div key={i} className="relative rounded-md p-8" style={{ background: c.background, border: "1px solid " + (p.highlighted ? c.primary : mix(c.border, 60)), boxShadow: p.highlighted ? "0 20px 60px -20px " + mix(c.primary, 45) : "none" }}>{p.highlighted ? (<span className="absolute right-6 top-6 rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wide" style={{ background: mix(c.primary, 14), color: c.primary }}>Popular</span>) : null}<div className="text-lg font-bold" style={{ fontFamily: heading }}>{p.name}</div><div className="mt-3 text-4xl font-extrabold" style={{ fontFamily: heading }}>{p.price}<span className="text-base font-normal" style={{ color: mix(c.foreground, 55) }}>{t(p.period)}</span></div><ul className="mt-6 space-y-3">{arr(p.features).map(function(ft, j){ return (<li key={j} className="flex items-center gap-2 text-sm" style={{ color: mix(c.foreground, 72) }}><Icon name="Check" className="h-4 w-4" style={{ color: c.primary }} />{ft}</li>); })}</ul><a href={t((p.cta||{}).href, "/contact")} className="mt-8 block rounded-md py-3 text-center text-sm font-bold" style={{ background: p.highlighted ? c.primary : mix(c.foreground, 8), color: p.highlighted ? c.primaryForeground : c.foreground }}>{t((p.cta||{}).label, "Get started")}</a></div>); })}</div></section>) : null}
+
+  <section className="px-6 py-20"><div className="relative mx-auto max-w-5xl overflow-hidden rounded-2xl px-8 py-16 text-center" style={{ background: c.primary, color: c.primaryForeground }}><h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl" style={{ fontFamily: heading }}>{t(cta.title, "Ready to get started?")}</h2><p className="mx-auto mt-4 max-w-xl text-base" style={{ color: mix(c.primaryForeground, 82) }}>{t(cta.body)}</p><a href={t((cta.button||{}).href, "/contact")} className="mt-8 inline-block rounded-md px-8 py-4 text-base font-bold" style={{ background: c.primaryForeground, color: c.primary }}>{t((cta.button||{}).label, "Get started")}</a></div></section>
+  ${FOOTER}
+</div>);
+`)
+
+/**
+ * Bigspring — faithful port of themefisher/bigspring-light-nextjs (MIT).
+ * Reproduces its bright marketing-agency look: a centered hero banner with a
+ * large product image, alternating image/text "service" rows, a feature grid,
+ * a numbered workflow strip and a closing CTA. Content-driven via slots.
+ */
+const BIGSPRING_CODE = makeComponent(`
+var feats = arr(feat.items);
+var stats = arr(co.stats);
+var prod = co.products || {};
+var services = arr(prod.items);
+if (!services.length) { services = feats.map(function(f){ return { name: f.title, blurb: f.body }; }); }
+var bullets = arr(show.bullets);
+return (
+<div style={{ background: c.background, color: c.foreground, fontFamily: bodyFont }}>
+  ${NAV}
+  <section className="px-6 pt-20 pb-14 text-center">
+    <div className="mx-auto max-w-3xl">
+      {t(hero.eyebrow) ? (<span className="mb-4 inline-block text-xs font-bold uppercase tracking-[0.2em]" style={{ color: c.primary }}>{hero.eyebrow}</span>) : null}
+      <h1 className="text-4xl font-bold leading-tight tracking-tight sm:text-5xl" style={{ fontFamily: heading }}>{t(hero.title, brand)}</h1>
+      <p className="mx-auto mt-5 max-w-2xl text-lg" style={{ color: mix(c.foreground, 60) }}>{t(hero.subtitle)}</p>
+      <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+        <a href={t((hero.primaryCta||{}).href, "/products")} className="rounded-md px-7 py-3.5 text-sm font-semibold" style={{ background: c.primary, color: c.primaryForeground }}>{t((hero.primaryCta||{}).label, "Get started")}</a>
+        <a href={t((hero.secondaryCta||{}).href, "/contact")} className="rounded-md px-7 py-3.5 text-sm font-semibold" style={{ border: "1px solid " + mix(c.foreground, 22), color: c.foreground }}>{t((hero.secondaryCta||{}).label, "Learn more")}</a>
+      </div>
+    </div>
+    <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="mx-auto mt-14 max-w-4xl overflow-hidden rounded-xl" style={{ border: "1px solid " + mix(c.border, 55) }}><img src={pic("hero")} alt={t(hero.title, brand)} className="block w-full" style={{ aspectRatio: "16/9", objectFit: "cover" }} /></motion.div>
+  </section>
+
+  {services.length ? services.slice(0, 3).map(function(s, i){ var odd = i % 2 === 1; return (
+  <section key={i} className="px-6 py-16" style={{ background: odd ? mix(c.foreground, 3) : c.background }}>
+    <div className="mx-auto grid max-w-6xl items-center gap-10 md:grid-cols-2">
+      <div className={"overflow-hidden rounded-xl " + (odd ? "md:order-2" : "")} style={{ border: "1px solid " + mix(c.border, 55) }}><img src={imgAt(i + 1)} alt={s.name} className="block w-full" style={{ aspectRatio: "6/5", objectFit: "cover" }} /></div>
+      <div className={odd ? "md:order-1" : ""}>
+        <h2 className="text-3xl font-bold leading-snug tracking-tight" style={{ fontFamily: heading }}>{s.name}</h2>
+        <p className="mt-4 text-base leading-relaxed" style={{ color: mix(c.foreground, 62) }}>{t(s.blurb, t(s.price))}</p>
+        <a href="/products" className="mt-6 inline-flex items-center gap-1 text-sm font-semibold" style={{ color: c.primary }}>{t(prod.cta, "Learn more")} <Icon name="ArrowRight" className="h-4 w-4" /></a>
+      </div>
+    </div>
+  </section>); }) : null}
+
+  {feats.length ? (
+  <section className="px-6 py-20">
+    <div className="mx-auto max-w-2xl text-center"><h2 className="text-3xl font-bold tracking-tight sm:text-4xl" style={{ fontFamily: heading }}>{t(feat.title, "Why teams choose us")}</h2><p className="mt-4" style={{ color: mix(c.foreground, 60) }}>{t(feat.subtitle)}</p></div>
+    <div className="mx-auto mt-12 grid max-w-5xl gap-8 sm:grid-cols-2 lg:grid-cols-3">
+      {feats.map(function(f, i){ return (
+        <div key={i} className="rounded-xl p-7 text-center" style={{ background: mix(c.foreground, 3), border: "1px solid " + mix(c.border, 55) }}>
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full" style={{ background: mix(c.primary, 12), color: c.primary }}><Icon name={f.icon} className="h-6 w-6" /></div>
+          <h3 className="mb-2 text-lg font-bold" style={{ fontFamily: heading }}>{f.title}</h3>
+          <p className="text-sm leading-relaxed" style={{ color: mix(c.foreground, 60) }}>{f.body}</p>
+        </div>); })}
+    </div>
+  </section>) : null}
+
+  {bullets.length ? (
+  <section className="px-6 py-20" style={{ background: mix(c.foreground, 3) }}><div className="mx-auto max-w-4xl text-center"><h2 className="text-3xl font-bold tracking-tight sm:text-4xl" style={{ fontFamily: heading }}>{t(show.title, "How it works")}</h2></div><div className="mx-auto mt-12 grid max-w-5xl gap-8 sm:grid-cols-3">{bullets.map(function(b, i){ return (<div key={i} className="text-center"><div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full text-lg font-extrabold" style={{ background: c.primary, color: c.primaryForeground, fontFamily: heading }}>{i + 1}</div><p className="text-base" style={{ color: mix(c.foreground, 70) }}>{b}</p></div>); })}</div></section>) : null}
+
+  <section className="px-6 py-20"><div className="mx-auto max-w-5xl rounded-2xl px-8 py-14 text-center" style={{ background: c.primary, color: c.primaryForeground }}><h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl" style={{ fontFamily: heading }}>{t(cta.title, "Let's build something great")}</h2><p className="mx-auto mt-4 max-w-xl" style={{ color: mix(c.primaryForeground, 82) }}>{t(cta.body)}</p><a href={t((cta.button||{}).href, "/contact")} className="mt-8 inline-block rounded-md px-8 py-3.5 text-sm font-bold" style={{ background: c.primaryForeground, color: c.primary }}>{t((cta.button||{}).label, "Contact us")}</a></div></section>
+  ${FOOTER}
+</div>);
+`)
+
 export const LANDING_TEMPLATES: LandingTemplate[] = [
   {
     id: 'aurora-saas',
@@ -2491,6 +2634,67 @@ export const LANDING_TEMPLATES: LandingTemplate[] = [
       },
     },
     code: PRISM_CODE,
+  },
+  {
+    id: 'startup-mit',
+    name: 'Startup',
+    category: 'SaaS / Business (cloned · MIT)',
+    description:
+      'Cloned from the MIT-licensed NextJSTemplates/startup-nextjs and made content-driven: centered hero over soft gradient orbs, brand strip, icon-tile feature grid, a checklist showcase with image, star testimonials, 3-tier pricing and a CTA band. For startups, SaaS, agencies and B2B businesses.',
+    source: {
+      repo: 'NextJSTemplates/startup-nextjs',
+      url: 'https://github.com/NextJSTemplates/startup-nextjs',
+      stars: 2000,
+      author: 'NextJS Templates (MIT)',
+    },
+    themeId: 'electric-indigo',
+    designId: 'aurora-saas',
+    imageSlots: [
+      { key: 'showcase', purpose: 'Product / dashboard image beside the checklist "about" block' },
+    ],
+    placeholder: {
+      brand: 'Startup',
+      hero: {
+        eyebrow: 'Free trial',
+        title: 'The fastest way to launch your business online',
+        subtitle: 'Everything you need to plan, build and grow — in one place.',
+        primaryCta: { label: 'Get started', href: '/products' },
+        secondaryCta: { label: 'Talk to us', href: '/contact' },
+      },
+    },
+    code: STARTUP_CODE,
+  },
+  {
+    id: 'bigspring-mit',
+    name: 'Bigspring',
+    category: 'Marketing / Agency (cloned · MIT)',
+    description:
+      'Cloned from the MIT-licensed themefisher/bigspring-light-nextjs and made content-driven: bright centered hero with a large product image, alternating image/text service rows, a feature grid, a numbered workflow strip and a closing CTA. For marketing sites, agencies, consultancies and service businesses.',
+    source: {
+      repo: 'themefisher/bigspring-light-nextjs',
+      url: 'https://github.com/themefisher/bigspring-light-nextjs',
+      stars: 300,
+      author: 'Themefisher (MIT)',
+    },
+    themeId: 'cobalt-power',
+    designId: 'minimal-clean',
+    imageSlots: [
+      { key: 'hero', purpose: 'Large hero product/screenshot image under the headline' },
+      { key: 'service1', purpose: 'Image for the first alternating service row' },
+      { key: 'service2', purpose: 'Image for the second alternating service row' },
+      { key: 'service3', purpose: 'Image for the third alternating service row' },
+    ],
+    placeholder: {
+      brand: 'Bigspring',
+      hero: {
+        eyebrow: 'Agency',
+        title: 'We help brands grow with clarity',
+        subtitle: 'Strategy, design and marketing that turns visitors into customers.',
+        primaryCta: { label: 'Get started', href: '/products' },
+        secondaryCta: { label: 'Learn more', href: '/contact' },
+      },
+    },
+    code: BIGSPRING_CODE,
   },
 ]
 
