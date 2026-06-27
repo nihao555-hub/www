@@ -3,15 +3,22 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import {
+  ArrowRight,
+  Bell,
   Check,
+  ChevronDown,
   Code2,
   Download,
   Eye,
+  FolderPlus,
   ImageIcon,
+  LayoutDashboard,
   LayoutTemplate,
   Loader2,
+  PanelLeftClose,
   PencilRuler,
   Plus,
+  Search,
   Sparkles,
   Star,
   Wand2,
@@ -94,6 +101,47 @@ const EXAMPLE_PROMPTS: { emoji: string; title: string; brief: string }[] = [
     brief:
       '北欧极简风家居品牌，主打原木家具与收纳，面向都市小家庭，风格要干净、留白、温润自然。',
   },
+]
+
+// Build-type chips shown under the prompt (Manus-style suggestions).
+const BUILD_TYPES: { emoji: string; label: string; brief: string }[] = [
+  {
+    emoji: '🛍️',
+    label: '品牌电商',
+    brief: '一个高级感的 DTC 品牌电商独立站，主打精选好物，面向都市年轻消费者，要干净、有质感、转化导向。',
+  },
+  {
+    emoji: '🚀',
+    label: '产品落地页',
+    brief: '一个 SaaS 新品发布落地页，突出核心卖点与定价，面向 B 端决策者，风格现代、专业、有信任感。',
+  },
+  {
+    emoji: '🎨',
+    label: '个人作品集',
+    brief: '一个设计师个人作品集网站，展示项目案例与履历，风格极简、留白充足、排版精致。',
+  },
+  {
+    emoji: '🏢',
+    label: '企业官网',
+    brief: '一个科技公司企业官网，介绍业务、团队与联系方式，要稳重、专业、有国际化质感。',
+  },
+  {
+    emoji: '🍽️',
+    label: '餐饮门店',
+    brief: '一个精品咖啡馆门店官网，展示菜单、环境与到店预订，风格温暖、生活化、有食欲感。',
+  },
+]
+
+// Built-in capability chips for the "强大的内置能力" card.
+const INTEGRATIONS: string[] = [
+  'LLM 文案',
+  'GPT-Image 配图',
+  '21st.dev 组件',
+  '多语言',
+  '主题系统',
+  '模板库',
+  '代码导出',
+  '一键部署',
 ]
 
 const LOADING_TIPS: string[] = [
@@ -375,28 +423,113 @@ export const GenerateForm: React.FC<{ templates?: LandingTemplateMeta[] }> = ({
     />
   )
 
-  // ---- Idle: far-left nav (new task + history) + centered one-line brief ----
+  // ---- Idle: Manus-style app shell — left sidebar + centered hero composer ----
   if (!showWorkspace) {
+    const navItems: {
+      key: string
+      label: string
+      Icon: typeof Plus
+      onClick: () => void
+      active: boolean
+    }[] = [
+      { key: 'new', label: '新建任务', Icon: Plus, onClick: handleNewTask, active: false },
+      {
+        key: 'creative',
+        label: '自由创意',
+        Icon: Wand2,
+        onClick: () => setMode('creative'),
+        active: mode === 'creative',
+      },
+      {
+        key: 'template',
+        label: '套用模板',
+        Icon: Star,
+        onClick: () => setMode('template'),
+        active: mode === 'template',
+      },
+      {
+        key: 'library',
+        label: '模板库',
+        Icon: LayoutTemplate,
+        onClick: () => {
+          setMode('template')
+          setShowTemplatePicker(true)
+        },
+        active: false,
+      },
+    ]
+
     return (
-      <div className="fixed inset-0 z-40 flex bg-background">
-        {/* Far-left navigation: new task + history */}
-        <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-muted/30 sm:flex">
-          <div className="flex items-center gap-2 px-4 py-4">
-            <Sparkles className="size-5 text-primary" />
-            <span className="text-sm font-semibold tracking-tight">独立站生成器</span>
+      <div className="fixed inset-0 z-40 flex bg-background text-foreground">
+        {/* Left sidebar */}
+        <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-muted/30 md:flex">
+          {/* brand row */}
+          <div className="flex items-center justify-between px-4 py-3.5">
+            <div className="flex items-center gap-2">
+              <span className="flex size-6 items-center justify-center rounded-md bg-primary/15 text-primary">
+                <Sparkles className="size-4" />
+              </span>
+              <span className="text-sm font-semibold tracking-tight">独立站生成器</span>
+            </div>
+            <div className="flex items-center gap-0.5 text-muted-foreground">
+              <span className="rounded p-1 hover:bg-accent">
+                <Search className="size-4" />
+              </span>
+              <span className="rounded p-1 hover:bg-accent">
+                <PanelLeftClose className="size-4" />
+              </span>
+            </div>
           </div>
-          <div className="px-3">
-            <Button onClick={handleNewTask} size="sm" className="w-full justify-start gap-2">
-              <Plus className="size-4" />
-              新建任务
-            </Button>
+
+          {/* primary nav */}
+          <nav className="space-y-0.5 px-2">
+            {navItems.map(({ key, label, Icon, onClick, active }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={onClick}
+                className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors ${
+                  active
+                    ? 'bg-accent font-medium text-accent-foreground'
+                    : 'text-foreground/75 hover:bg-accent hover:text-accent-foreground'
+                }`}
+              >
+                <Icon className="size-4 shrink-0" />
+                {label}
+              </button>
+            ))}
+          </nav>
+
+          {/* Projects */}
+          <div className="flex items-center justify-between px-4 pb-1 pt-5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            <span>我的站点</span>
+            <button
+              type="button"
+              onClick={handleNewTask}
+              className="rounded p-0.5 hover:bg-accent hover:text-foreground"
+              aria-label="新建站点"
+            >
+              <FolderPlus className="size-3.5" />
+            </button>
           </div>
-          <div className="px-4 pb-2 pt-5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            历史任务
+          <div className="px-2">
+            <button
+              type="button"
+              onClick={handleNewTask}
+              className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-foreground/75 transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              <LayoutDashboard className="size-4 shrink-0" />
+              新建站点
+            </button>
           </div>
-          <nav className="min-h-0 flex-1 space-y-0.5 overflow-auto px-2 pb-4">
+
+          {/* Tasks (recent history) */}
+          <div className="px-4 pb-1 pt-5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            最近任务
+          </div>
+          <nav className="min-h-0 flex-1 space-y-0.5 overflow-auto px-2 pb-2">
             {history.length === 0 ? (
-              <p className="px-3 py-6 text-center text-xs text-muted-foreground">暂无历史任务</p>
+              <p className="px-3 py-4 text-xs text-muted-foreground">暂无历史任务</p>
             ) : (
               history.map((h) => (
                 <a
@@ -404,179 +537,217 @@ export const GenerateForm: React.FC<{ templates?: LandingTemplateMeta[] }> = ({
                   href={`/s/${h.slug}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="block rounded-md px-3 py-2 text-sm text-foreground/80 transition-colors hover:bg-accent hover:text-accent-foreground"
+                  className="flex items-center gap-2.5 rounded-md px-3 py-1.5 text-sm text-foreground/75 transition-colors hover:bg-accent hover:text-accent-foreground"
                 >
-                  <span className="block truncate font-medium">{h.siteName || h.slug}</span>
-                  <span className="block truncate text-[11px] text-muted-foreground">/s/{h.slug}</span>
+                  <LayoutTemplate className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{h.siteName || h.slug}</span>
                 </a>
               ))
             )}
           </nav>
-          {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- /admin is served by Payload, not a Next page route */}
-          <a
-            href="/admin"
-            className="border-t border-border px-4 py-3 text-xs text-muted-foreground transition-colors hover:text-foreground"
-          >
-            → 进入后台
-          </a>
+
+          {/* bottom: tip card + account */}
+          <div className="mt-auto space-y-2 border-t border-border p-3">
+            <div className="rounded-xl border border-border bg-card p-3">
+              <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium">
+                <Bell className="size-3.5 text-primary" />
+                小提示
+              </div>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                上传商品图，AI 看图设计会更贴合你的品牌质感。
+              </p>
+            </div>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- /admin is served by Payload, not a Next page route */}
+            <a
+              href="/admin"
+              className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-accent"
+            >
+              <span className="flex size-7 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
+                站
+              </span>
+              <span className="text-sm">进入后台</span>
+            </a>
+          </div>
         </aside>
 
-        {/* Centered one-line brief + example prompts (ChatGPT-style) */}
-        <main className="flex min-w-0 flex-1 flex-col items-center justify-center gap-6 overflow-auto px-6 py-10">
-          <div className="flex flex-col items-center gap-3 text-center">
-            <div className="flex size-14 items-center justify-center rounded-2xl border border-primary/30 bg-primary/10 shadow-sm">
-              <Sparkles className="size-7 text-primary" />
+        {/* Main */}
+        <main className="relative flex min-w-0 flex-1 flex-col overflow-auto">
+          {/* top bar */}
+          <div className="flex items-center justify-between px-5 py-3">
+            <span className="flex items-center gap-1 rounded-lg px-2 py-1 text-sm font-medium">
+              AI 独立站生成器
+              <ChevronDown className="size-4 text-muted-foreground" />
+            </span>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- /admin is served by Payload, not a Next page route */}
+            <a
+              href="/admin"
+              className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Sparkles className="size-3.5 text-primary" />
+              后台
+            </a>
+          </div>
+
+          {/* centered hero composer */}
+          <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-6 py-8">
+            <div className="mb-5 flex justify-center">
+              <span className="rounded-full border border-border bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">免费体验</span> · 一句话生成独立站
+              </span>
             </div>
-            <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-              一句话生成你的独立站
-            </h2>
-            <p className="max-w-xl text-sm text-muted-foreground">
-              {mode === 'creative'
-                ? '自由创意模式：世界级设计 Agent 会自动调研 21st.dev 组件、规划版式、撰写文案、批量配图并自我打磨，从零设计一个独一无二的独立站。'
-                : '套用模板模式：从高 star、顶级设计师打造的开源模板中挑一个，AI 自动按你的简介填文案、用你的图（缺图用 AI 生成），快速产出一个精致独立站。'}
-            </p>
-          </div>
+            <h1 className="text-center font-serif text-4xl font-medium tracking-tight sm:text-5xl">
+              想做一个什么样的独立站？
+            </h1>
 
-          <div className="w-full max-w-2xl">
-            {promptBox}
-            {error && (
-              <div className="mt-3 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-                {error}
-              </div>
-            )}
-          </div>
-
-          {/* Mode toggle (below the input): free-creative vs template */}
-          <div className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 p-1">
-            {(
-              [
-                { key: 'creative' as const, label: '自由创意', Icon: Wand2 },
-                { key: 'template' as const, label: '套用模板', Icon: Star },
-              ]
-            ).map(({ key, label, Icon }) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setMode(key)}
-                className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-                  mode === key
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Icon className="size-3.5" />
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {mode === 'creative' ? (
-            <div className="w-full max-w-2xl">
-              <p className="mb-2 text-center text-xs text-muted-foreground">试试这些示例</p>
-              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                {EXAMPLE_PROMPTS.map((ex) => (
-                  <button
-                    key={ex.title}
-                    type="button"
-                    onClick={() => setBrief(ex.brief)}
-                    className="group flex items-start gap-3 rounded-xl border border-border bg-card p-3 text-left transition-all hover:border-primary/50 hover:bg-accent hover:shadow-sm"
-                  >
-                    <span className="text-xl leading-none">{ex.emoji}</span>
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium">{ex.title}</span>
-                      <span className="line-clamp-2 block text-xs text-muted-foreground">
-                        {ex.brief}
-                      </span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-              <p className="mt-3 text-center text-[11px] text-muted-foreground">
-                提示：点击示例会填入输入框，记得上传一张商品图再点发送。
-              </p>
-            </div>
-          ) : (
-            <div className="flex w-full max-w-2xl flex-col items-center gap-3">
-              <div className="flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary">
-                <Sparkles className="size-3.5" />
-                AI 智能匹配已开启 · 自动从 {templates.length} 个高 star 模板里挑最契合的
-              </div>
-              <p className="text-center text-[11px] text-muted-foreground">
-                用一段话描述你的品牌、上传商品图（可选，缺图会用 AI 生成），点发送即可生成。
-              </p>
-
-              {/* Manual template picker (optional, collapsed by default) */}
-              <button
-                type="button"
-                onClick={() => setShowTemplatePicker((v) => !v)}
-                className="text-[11px] font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-              >
-                {showTemplatePicker ? '收起手动选择' : '高级：手动选择模板（可选）'}
-              </button>
-
-              {showTemplatePicker && (
-                <div className="grid w-full grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-                  <button
-                    type="button"
-                    onClick={() => setTemplateId('auto')}
-                    className={`group relative flex flex-col gap-1.5 rounded-xl border p-3 text-left transition-all hover:shadow-sm ${
-                      templateId === 'auto'
-                        ? 'border-primary bg-primary/5 shadow-sm'
-                        : 'border-dashed border-primary/40 bg-card hover:border-primary/60 hover:bg-accent'
-                    }`}
-                  >
-                    {templateId === 'auto' && (
-                      <span className="absolute right-2 top-2 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                        <Check className="size-3" />
-                      </span>
-                    )}
-                    <span className="flex items-center gap-1.5">
-                      <Sparkles className="size-4 text-primary" />
-                      <span className="block text-sm font-semibold">AI 智能匹配</span>
-                    </span>
-                    <span className="block text-[11px] font-medium text-primary/80">推荐 · 自动选模板</span>
-                    <span className="line-clamp-2 block text-xs text-muted-foreground">
-                      只写一句话，AI 读懂你的行业与调性，从模板库里自动挑最契合的那一个。
-                    </span>
-                  </button>
-                  {templates.map((tpl) => {
-                    const selected = templateId === tpl.id
-                    return (
-                      <button
-                        key={tpl.id}
-                        type="button"
-                        onClick={() => setTemplateId(tpl.id)}
-                        className={`group relative flex flex-col gap-1.5 rounded-xl border p-3 text-left transition-all hover:shadow-sm ${
-                          selected
-                            ? 'border-primary bg-primary/5 shadow-sm'
-                            : 'border-border bg-card hover:border-primary/50 hover:bg-accent'
-                        }`}
-                      >
-                        {selected && (
-                          <span className="absolute right-2 top-2 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                            <Check className="size-3" />
-                          </span>
-                        )}
-                        <span className="flex items-center gap-1.5">
-                          <span className="block text-sm font-semibold">{tpl.name}</span>
-                        </span>
-                        <span className="block text-[11px] font-medium text-primary/80">
-                          {tpl.category}
-                        </span>
-                        <span className="line-clamp-2 block text-xs text-muted-foreground">
-                          {tpl.description}
-                        </span>
-                        <span className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
-                          <Star className="size-3 fill-amber-400 text-amber-400" />
-                          {(tpl.source.stars / 1000).toFixed(1)}k · {tpl.source.repo}
-                        </span>
-                      </button>
-                    )
-                  })}
+            <div className="mt-8">
+              {promptBox}
+              {error && (
+                <div className="mt-3 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+                  {error}
                 </div>
               )}
             </div>
-          )}
+
+            {/* meta row: type label (left) + mode toggle (right) */}
+            <div className="mt-3 flex items-center justify-between px-1">
+              <span className="text-sm text-muted-foreground">想生成哪种类型？</span>
+              <div className="inline-flex items-center gap-0.5 rounded-full border border-border bg-muted/40 p-0.5">
+                {(
+                  [
+                    { key: 'creative' as const, label: '自由创意', Icon: Wand2 },
+                    { key: 'template' as const, label: '套用模板', Icon: Star },
+                  ]
+                ).map(({ key, label, Icon }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setMode(key)}
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                      mode === key
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Icon className="size-3.5" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* build-type chips (creative) / smart-match + picker (template) */}
+            {mode === 'creative' ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {BUILD_TYPES.map((b) => (
+                  <button
+                    key={b.label}
+                    type="button"
+                    onClick={() => setBrief(b.brief)}
+                    className="flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-sm text-foreground/85 transition-all hover:border-primary/50 hover:bg-accent hover:shadow-sm"
+                  >
+                    <span className="text-base leading-none">{b.emoji}</span>
+                    {b.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-4 flex flex-col gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary">
+                    <Sparkles className="size-3.5" />
+                    AI 智能匹配 · 自动从 {templates.length} 个高 star 模板里挑最契合的
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowTemplatePicker((v) => !v)}
+                    className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    {showTemplatePicker ? '收起手动选择' : '手动选择模板'}
+                  </button>
+                </div>
+
+                {showTemplatePicker && (
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                    <button
+                      type="button"
+                      onClick={() => setTemplateId('auto')}
+                      className={`group relative flex flex-col gap-1.5 rounded-xl border p-3 text-left transition-all hover:shadow-sm ${
+                        templateId === 'auto'
+                          ? 'border-primary bg-primary/5 shadow-sm'
+                          : 'border-dashed border-primary/40 bg-card hover:border-primary/60 hover:bg-accent'
+                      }`}
+                    >
+                      {templateId === 'auto' && (
+                        <span className="absolute right-2 top-2 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                          <Check className="size-3" />
+                        </span>
+                      )}
+                      <span className="flex items-center gap-1.5">
+                        <Sparkles className="size-4 text-primary" />
+                        <span className="block text-sm font-semibold">AI 智能匹配</span>
+                      </span>
+                      <span className="block text-[11px] font-medium text-primary/80">推荐 · 自动选模板</span>
+                      <span className="line-clamp-2 block text-xs text-muted-foreground">
+                        只写一句话，AI 读懂你的行业与调性，从模板库里自动挑最契合的那一个。
+                      </span>
+                    </button>
+                    {templates.map((tpl) => {
+                      const selected = templateId === tpl.id
+                      return (
+                        <button
+                          key={tpl.id}
+                          type="button"
+                          onClick={() => setTemplateId(tpl.id)}
+                          className={`group relative flex flex-col gap-1.5 rounded-xl border p-3 text-left transition-all hover:shadow-sm ${
+                            selected
+                              ? 'border-primary bg-primary/5 shadow-sm'
+                              : 'border-border bg-card hover:border-primary/50 hover:bg-accent'
+                          }`}
+                        >
+                          {selected && (
+                            <span className="absolute right-2 top-2 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                              <Check className="size-3" />
+                            </span>
+                          )}
+                          <span className="flex items-center gap-1.5">
+                            <span className="block text-sm font-semibold">{tpl.name}</span>
+                          </span>
+                          <span className="block text-[11px] font-medium text-primary/80">
+                            {tpl.category}
+                          </span>
+                          <span className="line-clamp-2 block text-xs text-muted-foreground">
+                            {tpl.description}
+                          </span>
+                          <span className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+                            <Star className="size-3 fill-amber-400 text-amber-400" />
+                            {(tpl.source.stars / 1000).toFixed(1)}k · {tpl.source.repo}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Built-in capabilities card */}
+            <div className="mt-8 rounded-2xl border border-border bg-card p-5 shadow-sm">
+              <div className="mb-3 flex items-center gap-1.5 text-sm font-semibold">
+                强大的内置能力
+                <ArrowRight className="size-3.5 text-muted-foreground" />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {INTEGRATIONS.map((name) => (
+                  <span
+                    key={name}
+                    className="rounded-lg border border-border bg-muted/40 px-2.5 py-1 text-xs text-foreground/80"
+                  >
+                    {name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
         </main>
       </div>
     )
