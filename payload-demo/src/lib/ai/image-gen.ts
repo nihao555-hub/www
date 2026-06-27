@@ -74,18 +74,44 @@ export async function generateImage(opts: GenerateImageOptions): Promise<string>
   const cfg = getImageGenConfig()
   if (!cfg) throw new Error('gpt-image not configured (set OPENAI_COMPAT_API_KEY)')
 
+  // Primary path: stream status frames. The relay often stalls the stream at a
+  // low progress and finishes the job asynchronously, so streamGenerate returns
+  // the task id even when it never sees a final url.
+  let taskId: string | undefined
   try {
-    return await streamGenerate(cfg, opts)
+    const { url, id } = await streamGenerate(cfg, opts)
+    if (url) return url
+    taskId = id
   } catch (err) {
     if (opts.signal?.aborted) throw err
-    // Streaming failed (relay quirk, parse error, transient) — fall back to the
-    // documented webHook="-1" + poll path.
-    return await pollGenerate(cfg, opts)
+    if (err instanceof StreamStalled) taskId = err.id
+  }
+
+  // The job is running server-side; poll its result by id (generous budget,
+  // image draws routinely take 3-4 minutes on this relay).
+  if (taskId) {
+    const url = await pollResultById(cfg, taskId, opts)
+    if (url) return url
+  }
+
+  // Last resort: submit a fresh job via the documented webHook="-1" + poll path.
+  return await pollGenerate(cfg, opts)
+}
+
+/** Carries the task id when a stream stalls so we can poll it instead of resubmitting. */
+class StreamStalled extends Error {
+  id?: string
+  constructor(id?: string) {
+    super('image stream stalled without a result')
+    this.id = id
   }
 }
 
 /** Primary path: stream status frames from /draw/completions. */
-async function streamGenerate(cfg: ImageGenConfig, opts: GenerateImageOptions): Promise<string> {
+async function streamGenerate(
+  cfg: ImageGenConfig,
+  opts: GenerateImageOptions,
+): Promise<{ url?: string; id?: string }> {
   const res = await fetch(`${cfg.baseUrl}/draw/completions`, {
     method: 'POST',
     headers: {
@@ -110,9 +136,11 @@ async function streamGenerate(cfg: ImageGenConfig, opts: GenerateImageOptions): 
   const decoder = new TextDecoder()
   let buffer = ''
   let last: DrawFrame = {}
+  let lastId: string | undefined
 
   const handleFrame = (frame: DrawFrame): string | undefined => {
     last = frame
+    if (frame.id) lastId = frame.id
     if (typeof frame.progress === 'number') opts.onProgress?.(frame.progress)
     if (frame.status === 'succeeded') {
       const url = firstUrl(frame)
@@ -143,7 +171,7 @@ async function streamGenerate(cfg: ImageGenConfig, opts: GenerateImageOptions): 
         continue
       }
       const url = handleFrame(frame)
-      if (url) return url
+      if (url) return { url, id: lastId }
     }
   }
 
@@ -153,15 +181,57 @@ async function streamGenerate(cfg: ImageGenConfig, opts: GenerateImageOptions): 
     const payload = tail.startsWith('data:') ? tail.slice(5).trim() : tail
     try {
       const url = handleFrame(JSON.parse(payload) as DrawFrame)
-      if (url) return url
+      if (url) return { url, id: lastId }
     } catch {
       /* ignore */
     }
   }
 
   const url = firstUrl(last)
-  if (url) return url
-  throw new Error(`image stream ended without a result (status: ${last.status || 'none'})`)
+  if (url) return { url, id: lastId }
+  // Stream ended without a final url; the job is usually still running
+  // server-side, so surface the id for the caller to poll.
+  throw new StreamStalled(lastId)
+}
+
+/** Poll /draw/result for an already-submitted task id until it settles. */
+async function pollResultById(
+  cfg: ImageGenConfig,
+  id: string,
+  opts: GenerateImageOptions,
+): Promise<string | undefined> {
+  const deadline = Date.now() + 360_000 // 6 min budget; draws take 3-4 min
+  while (Date.now() < deadline) {
+    if (opts.signal?.aborted) throw new Error('aborted')
+    await sleep(3000, opts.signal)
+    const poll = await fetch(`${cfg.baseUrl}/draw/result`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${cfg.apiKey}`,
+      },
+      body: JSON.stringify({ id }),
+      signal: opts.signal,
+    })
+    if (!poll.ok) continue
+    let body: { data?: DrawFrame } & DrawFrame
+    try {
+      body = (await poll.json()) as { data?: DrawFrame } & DrawFrame
+    } catch {
+      continue
+    }
+    // /draw/result wraps the frame in { code, data, msg }.
+    const frame: DrawFrame = body.data ?? body
+    if (typeof frame.progress === 'number') opts.onProgress?.(frame.progress)
+    if (frame.status === 'succeeded') {
+      const url = firstUrl(frame)
+      if (url) return url
+    }
+    if (isTerminalError(frame)) {
+      throw new Error(`image generation ${frame.status}: ${frame.error || 'unknown'}`)
+    }
+  }
+  return undefined
 }
 
 /** Fallback path: submit with webHook="-1", then poll /draw/result by id. */
@@ -189,7 +259,8 @@ async function pollGenerate(cfg: ImageGenConfig, opts: GenerateImageOptions): Pr
   }
   let submitted: DrawFrame
   try {
-    submitted = JSON.parse(submitText) as DrawFrame
+    const body = JSON.parse(submitText) as { data?: DrawFrame } & DrawFrame
+    submitted = body.data ?? body
   } catch {
     throw new Error('draw/completions submit returned non-JSON')
   }
@@ -204,7 +275,7 @@ async function pollGenerate(cfg: ImageGenConfig, opts: GenerateImageOptions): Pr
   const id = submitted.id
   if (!id) throw new Error('draw/completions submit returned no task id')
 
-  const deadline = Date.now() + 120_000 // 2 min budget
+  const deadline = Date.now() + 360_000 // 6 min budget; draws take 3-4 min
   while (Date.now() < deadline) {
     if (opts.signal?.aborted) throw new Error('aborted')
     await sleep(2500, opts.signal)
@@ -221,7 +292,8 @@ async function pollGenerate(cfg: ImageGenConfig, opts: GenerateImageOptions): Pr
     if (!poll.ok) continue
     let frame: DrawFrame
     try {
-      frame = (await poll.json()) as DrawFrame
+      const body = (await poll.json()) as { data?: DrawFrame } & DrawFrame
+      frame = body.data ?? body
     } catch {
       continue
     }

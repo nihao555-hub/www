@@ -6,7 +6,7 @@ import {
   imageUrlToDataUrl,
   isImageGenConfigured,
 } from './image-gen'
-import { extractJson, relayChat, relayChatStream, type ChatMessage } from './relay'
+import { extractJson, relayChat, relayChatJson, relayChatStream, type ChatMessage } from './relay'
 import { normalizeSiteSpec, type SiteSpec, type SpecSection } from './site-spec'
 import { AGENT_ROLE, TASTE_SKILL_GUIDE, TASTE_SKILL_JSX_RULES } from './taste-skill'
 import {
@@ -452,7 +452,7 @@ async function generateSiteImages(
   const results = await Promise.allSettled(
     plan.map(async (item) => {
       const url = await generateImage({
-        prompt: item.prompt,
+        prompt: `${item.prompt}. Unbranded and generic: absolutely no text, letters, numbers, words, logos, brand names, watermarks, signatures or UI anywhere in the image.`,
         aspectRatio: item.aspectRatio,
         signal,
       })
@@ -753,8 +753,7 @@ export async function runGeneration(
     },
   ]
 
-  const reply = await relayChat(specMessages)
-  const raw = extractJson(reply)
+  const raw = await relayChatJson(specMessages, signal)
   const validDesignIds = DESIGNS.map((d) => d.id)
   const spec = normalizeSiteSpec(
     raw,
