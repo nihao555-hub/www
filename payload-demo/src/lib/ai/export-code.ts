@@ -41,7 +41,11 @@ export function buildSiteCodeBundle(spec: SiteSpec): string {
     page.sections.forEach((section, si) => {
       parts.push(`// ${sectionLabel(section, si)}`)
       if (section.kind === 'jsx') {
-        parts.push((section.source || section.code).trim())
+        // `source` is sometimes just a template reference (e.g.
+        // "template:industrial-bold"); prefer the real compiled JSX in that
+        // case so the export shows actual component code, not a label.
+        const src = section.source && !/^template:/i.test(section.source) ? section.source : ''
+        parts.push((src || section.code).trim())
       } else {
         // Non-JSX sections are data-driven; emit their structured content so the
         // export is complete and nothing the AI produced is lost.
