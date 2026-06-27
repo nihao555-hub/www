@@ -2,10 +2,24 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Check, Loader2, Plus, Sparkles, Star, Wand2 } from 'lucide-react'
+import {
+  Check,
+  Code2,
+  Download,
+  Eye,
+  ImageIcon,
+  LayoutTemplate,
+  Loader2,
+  PencilRuler,
+  Plus,
+  Sparkles,
+  Star,
+  Wand2,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { CodeBlock } from '@/components/ai-elements/code-block'
 import { PromptInputBox } from '@/components/ui/prompt-input-box'
 import { THEMES } from '@/lib/ai/themes'
 import type { LandingTemplateMeta } from '@/lib/ai/site-templates'
@@ -82,6 +96,16 @@ const EXAMPLE_PROMPTS: { emoji: string; title: string; brief: string }[] = [
   },
 ]
 
+const LOADING_TIPS: string[] = [
+  '正在读懂你的品牌调性与目标人群…',
+  'AI 正在 21st.dev 翻找最契合的组件灵感…',
+  '在为每个版块撰写有记忆点的文案…',
+  '调色板、字体与留白都在按品牌气质微调…',
+  '正在批量生成场景图与装饰插画…',
+  '自我打磨：修复变形 / 溢出 / 排版细节…',
+  '好设计值得等待，马上就好 ✨',
+]
+
 export const GenerateForm: React.FC<{ templates?: LandingTemplateMeta[] }> = ({
   templates = [],
 }) => {
@@ -106,6 +130,11 @@ export const GenerateForm: React.FC<{ templates?: LandingTemplateMeta[] }> = ({
   const [mcpToolNames, setMcpToolNames] = useState<string[]>([])
   const [logs, setLogs] = useState<string[]>([])
   const [result, setResult] = useState<DoneResult | null>(null)
+  // Right panel view: rendered preview vs. generated source code.
+  const [rightView, setRightView] = useState<'preview' | 'code'>('preview')
+  const [code, setCode] = useState<string | null>(null)
+  const [codeLoading, setCodeLoading] = useState(false)
+  const [tipIndex, setTipIndex] = useState(0)
   const [history, setHistory] = useState<
     { id: number; siteName: string; slug: string; themeId?: string; updatedAt?: string }[]
   >([])
@@ -124,6 +153,8 @@ export const GenerateForm: React.FC<{ templates?: LandingTemplateMeta[] }> = ({
     setRunning(false)
     setError(null)
     setResult(null)
+    setRightView('preview')
+    setCode(null)
     setSteps([])
     setAnalysis('')
     setPlan('')
@@ -287,6 +318,45 @@ export const GenerateForm: React.FC<{ templates?: LandingTemplateMeta[] }> = ({
     const lastDone = [...steps].reverse().find((s) => s.status === 'done')
     return lastDone?.label ?? ''
   }, [steps])
+
+  // Lazily fetch the generated source the first time the user opens the code
+  // view for a finished site.
+  useEffect(() => {
+    if (rightView !== 'code' || !result || code != null || codeLoading) return
+    let cancelled = false
+    setCodeLoading(true)
+    fetch(`/next/sites/${encodeURIComponent(result.slug)}/code`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d: { code?: string }) => {
+        if (!cancelled) setCode(d.code ?? '// 暂无可导出的代码')
+      })
+      .catch(() => {
+        if (!cancelled) setCode('// 拉取代码失败，请稍后重试')
+      })
+      .finally(() => {
+        if (!cancelled) setCodeLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [rightView, result, code, codeLoading])
+
+  // Rotate the encouraging tips while the site is being built.
+  useEffect(() => {
+    if (result || !running) return
+    const id = setInterval(() => setTipIndex((i) => (i + 1) % LOADING_TIPS.length), 2800)
+    return () => clearInterval(id)
+  }, [result, running])
+
+  const downloadCode = useCallback(() => {
+    if (!result) return
+    const a = document.createElement('a')
+    a.href = `/next/sites/${encodeURIComponent(result.slug)}/code?download=1`
+    a.download = `${result.slug}.tsx`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+  }, [result])
 
   const promptBox = (
     <PromptInputBox
@@ -551,10 +621,41 @@ export const GenerateForm: React.FC<{ templates?: LandingTemplateMeta[] }> = ({
         )}
       </div>
 
-      {/* Right: full live independent-site preview */}
+      {/* Right: live preview / generated code, with a top view switcher */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {result && (
+            <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/20 px-3 py-2">
+              <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-background p-0.5">
+                {(
+                  [
+                    { key: 'preview' as const, label: '界面', Icon: Eye },
+                    { key: 'code' as const, label: '代码', Icon: Code2 },
+                  ]
+                ).map(({ key, label, Icon }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setRightView(key)}
+                    className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                      rightView === key
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Icon className="size-3.5" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <Button onClick={downloadCode} size="sm" variant="outline" className="h-7 gap-1.5 px-2.5 text-xs">
+                <Download className="size-3.5" />
+                下载代码
+              </Button>
+            </div>
+          )}
+
           <AnimatePresence mode="wait">
-            {result ? (
+            {result && rightView === 'preview' ? (
               <motion.iframe
                 key="preview"
                 initial={{ opacity: 0 }}
@@ -564,15 +665,32 @@ export const GenerateForm: React.FC<{ templates?: LandingTemplateMeta[] }> = ({
                 title="preview"
                 className="h-full w-full flex-1 bg-white"
               />
+            ) : result && rightView === 'code' ? (
+              <motion.div
+                key="code"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="min-h-0 flex-1 overflow-auto bg-[#0d1117] p-3"
+              >
+                {codeLoading || code == null ? (
+                  <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="size-4 animate-spin" />
+                    正在整理源码…
+                  </div>
+                ) : (
+                  <CodeBlock code={code} language="tsx" />
+                )}
+              </motion.div>
             ) : (
               <motion.div
                 key="loading"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="relative flex h-full flex-1 flex-col items-center justify-center gap-5 overflow-hidden bg-gradient-to-br from-muted/40 via-background to-muted/30 text-center"
+                className="relative flex h-full flex-1 flex-col items-center justify-center gap-6 overflow-hidden bg-gradient-to-br from-muted/40 via-background to-muted/30 text-center"
               >
-                {/* animated ambient blobs, synced with the working state */}
+                {/* animated ambient blobs */}
                 <motion.div
                   aria-hidden
                   className="pointer-events-none absolute -left-24 -top-24 size-72 rounded-full bg-primary/20 blur-3xl"
@@ -585,30 +703,89 @@ export const GenerateForm: React.FC<{ templates?: LandingTemplateMeta[] }> = ({
                   animate={{ x: [0, -30, 0], y: [0, -40, 0], scale: [1, 1.2, 1] }}
                   transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
                 />
-                <motion.div
-                  className="relative flex size-16 items-center justify-center rounded-2xl border border-primary/30 bg-background/70 shadow-lg backdrop-blur"
-                  animate={{ rotate: [0, 8, -8, 0] }}
-                  transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-                >
-                  <Sparkles className="size-7 text-primary" />
-                </motion.div>
+
+                {/* a mock site skeleton whose blocks assemble on a loop */}
+                <div className="relative w-72 max-w-[80%] rounded-xl border border-border bg-background/70 p-3 shadow-xl backdrop-blur">
+                  <div className="mb-3 flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-red-400/70" />
+                    <span className="size-2 rounded-full bg-amber-400/70" />
+                    <span className="size-2 rounded-full bg-emerald-400/70" />
+                    <motion.div
+                      className="ml-2 h-3 flex-1 rounded bg-muted"
+                      animate={{ opacity: [0.4, 0.9, 0.4] }}
+                      transition={{ duration: 1.8, repeat: Infinity }}
+                    />
+                  </div>
+                  {[
+                    'h-10 w-3/4',
+                    'h-4 w-full',
+                    'h-4 w-5/6',
+                  ].map((cls, i) => (
+                    <motion.div
+                      key={i}
+                      className={`mb-2 rounded bg-gradient-to-r from-primary/30 to-fuchsia-400/20 ${cls}`}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: [0, 1, 1, 0], x: [-8, 0, 0, -8] }}
+                      transition={{
+                        duration: 4,
+                        repeat: Infinity,
+                        delay: i * 0.5,
+                        ease: 'easeInOut',
+                      }}
+                    />
+                  ))}
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    {[0, 1, 2].map((i) => (
+                      <motion.div
+                        key={i}
+                        className="aspect-square rounded-lg bg-muted"
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: [0, 1, 1, 0], scale: [0.8, 1, 1, 0.8] }}
+                        transition={{
+                          duration: 4,
+                          repeat: Infinity,
+                          delay: 1.5 + i * 0.4,
+                          ease: 'easeInOut',
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* phase icons that pulse in sequence */}
+                <div className="relative flex items-center gap-3">
+                  {[ImageIcon, LayoutTemplate, Sparkles, PencilRuler, Wand2].map((Icon, i) => (
+                    <motion.div
+                      key={i}
+                      className="flex size-9 items-center justify-center rounded-xl border border-primary/30 bg-background/70 text-primary shadow-sm backdrop-blur"
+                      animate={{ scale: [1, 1.18, 1], opacity: [0.45, 1, 0.45] }}
+                      transition={{
+                        duration: 1.6,
+                        repeat: Infinity,
+                        delay: i * 0.32,
+                        ease: 'easeInOut',
+                      }}
+                    >
+                      <Icon className="size-4" />
+                    </motion.div>
+                  ))}
+                </div>
+
                 <div className="relative flex flex-col items-center gap-2">
                   <div className="flex items-center gap-2 text-sm font-medium">
                     <Loader2 className="size-4 animate-spin text-primary" />
-                    正在生成你的独立站…
+                    {currentStepLabel ? `当前：${currentStepLabel}` : '正在生成你的独立站…'}
                   </div>
                   <AnimatePresence mode="wait">
                     <motion.p
-                      key={currentStepLabel}
+                      key={tipIndex}
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -6 }}
-                      transition={{ duration: 0.25 }}
+                      transition={{ duration: 0.3 }}
                       className="max-w-sm text-xs text-muted-foreground"
                     >
-                      {currentStepLabel
-                        ? `当前：${currentStepLabel}`
-                        : 'AI 正在读图、规划版式并组装版块…'}
+                      {LOADING_TIPS[tipIndex]}
                     </motion.p>
                   </AnimatePresence>
                 </div>
@@ -627,6 +804,10 @@ export const GenerateForm: React.FC<{ templates?: LandingTemplateMeta[] }> = ({
                 <a href={result.adminUrl} target="_blank" rel="noreferrer">
                   在后台编辑
                 </a>
+              </Button>
+              <Button onClick={downloadCode} size="sm" variant="ghost" className="gap-1.5">
+                <Download className="size-4" />
+                下载代码
               </Button>
             </div>
           )}
