@@ -9,6 +9,13 @@ import {
 import { extractJson, relayChat, relayChatStream, type ChatMessage } from './relay'
 import { normalizeSiteSpec, type SiteSpec, type SpecSection } from './site-spec'
 import { AGENT_ROLE, TASTE_SKILL_GUIDE, TASTE_SKILL_JSX_RULES } from './taste-skill'
+import {
+  DESIGN_STYLES,
+  DESIGN_STYLES_GUIDE,
+  designStylesCatalog,
+  getDesignStyle,
+  type DesignStyle,
+} from './design-styles'
 import { THEMES, DEFAULT_THEME_ID, getTheme, themeCatalogForPrompt } from './themes'
 import {
   DESIGNS,
@@ -125,7 +132,8 @@ You are shown a merchant's product photos and a short brief. Think out loud, bri
 3. Pick exactly ONE theme id from the catalog below that best matches the brand.
 4. Pick exactly ONE template archetype id from the template library below — this is the proven page/section blueprint you will start from instead of designing from scratch.
 5. Pick exactly ONE design family id from the design library below — this is the visual LAYOUT DNA (hero composition, feature/stat layout, spacing, decoration). Choose the family whose vibe fits the brand so this site does NOT look like a generic template; vary it by industry/mood.
-6. Following the chosen template's blueprint, plan the pages and for each list the sections you will build (use rich sections: features-with-icons, stats, product showcase, gallery, process steps, FAQ, strong CTA, contact details).
+6. Pick exactly ONE design STYLE id from the design-style palette below — this is the overarching art direction (typography, palette logic, signature motion). Commit to it fully so the site has a deliberate, named aesthetic instead of generic slop.
+7. Following the chosen template's blueprint, plan the pages and for each list the sections you will build (use rich sections: features-with-icons, stats, product showcase, gallery, process steps, FAQ, strong CTA, contact details).
 
 Theme catalog (id (mood): when to use):
 {CATALOG}
@@ -136,11 +144,17 @@ Template library (id: name — when to use):
 Design family library (id: name — when to use):
 {DESIGNS}
 
+Design-style palette (id — name: when to use):
+{DESIGN_STYLES}
+
 Keep it concise (a short paragraph + a per-page bullet plan). End with THREE lines exactly like:
 THEME: <theme-id>
 TEMPLATE: <template-id>
 DESIGN: <design-id>
+STYLE: <design-style-id>
 Write your analysis in {LANGUAGE}.
+
+{DESIGN_STYLES_GUIDE}
 
 ${TASTE_SKILL_GUIDE}`
 
@@ -467,6 +481,29 @@ function pickThemeFromAnalysis(analysis: string): string | undefined {
   return undefined
 }
 
+function pickDesignStyleFromAnalysis(analysis: string): string | undefined {
+  const match = analysis.match(/STYLE:\s*([a-z0-9-]+)/i)
+  const id = match?.[1]?.toLowerCase()
+  if (id && DESIGN_STYLES.some((s) => s.id === id)) return id
+  for (const s of DESIGN_STYLES) {
+    if (analysis.toLowerCase().includes(s.id)) return s.id
+  }
+  return undefined
+}
+
+/** Compact, prompt-ready cue block for ONE chosen design style. */
+function designStyleCues(style: DesignStyle | undefined): string {
+  if (!style) return ''
+  return [
+    `Design style (commit to this art direction): ${style.name}`,
+    `- Typography: ${style.typography}`,
+    `- Palette: ${style.palette}`,
+    `- Layout move: ${style.layout}`,
+    `- Motion: ${style.motion}`,
+    `- Avoid: ${style.avoid}`,
+  ].join('\n')
+}
+
 export type EmitFn = (event: GenEvent) => void
 
 /**
@@ -501,6 +538,8 @@ export async function runGeneration(
   const analysisSystem = ANALYSIS_SYSTEM.replace('{CATALOG}', catalog)
     .replace('{TEMPLATES}', templateCatalogForPrompt())
     .replace('{DESIGNS}', designCatalogForPrompt())
+    .replace('{DESIGN_STYLES}', designStylesCatalog())
+    .replace('{DESIGN_STYLES_GUIDE}', DESIGN_STYLES_GUIDE)
     .replace('{LANGUAGE}', lang)
   const analysisMessages: ChatMessage[] = [
     { role: 'system', content: analysisSystem },
@@ -535,6 +574,11 @@ export async function runGeneration(
     merchant.designId || pickDesignFromAnalysis(analysis) || DEFAULT_DESIGN_ID
   const design = getDesign(chosenDesign)
   emit({ type: 'log', message: `Selected design family: ${design.name} (${design.id})` })
+  const designStyle = getDesignStyle(pickDesignStyleFromAnalysis(analysis))
+  const styleCues = designStyleCues(designStyle)
+  if (designStyle) {
+    emit({ type: 'log', message: `Design style: ${designStyle.name} (${designStyle.id})` })
+  }
 
   // Plan-first: the agent commits to a concrete, brand-specific build plan
   // (design read + the three dials + section order + signature + imagery)
@@ -552,6 +596,7 @@ export async function runGeneration(
             `Chosen theme: ${theme.name} (${theme.id}) — ${theme.mood}`,
             `Chosen design family: ${design.name} — ${design.description}`,
             `Starting template archetype: ${template.name} (${template.id})`,
+            ...(styleCues ? ['', styleCues] : []),
             '',
             'Your earlier design analysis:',
             analysis.slice(0, 1600),
@@ -743,6 +788,7 @@ export async function runGeneration(
         '',
         `Theme tokens (use via theme.colors.*): ${JSON.stringify(theme.colors)}`,
         `Design family vibe: ${design.name} — ${design.description}`,
+        ...(styleCues ? ['', styleCues] : []),
         '',
         'Hero copy to render (already written in the target language — do not translate or invent new copy):',
         JSON.stringify(
@@ -862,6 +908,7 @@ export async function runGeneration(
         '',
         `Theme tokens (use via theme.colors.*): ${JSON.stringify(theme.colors)}`,
         `Design family vibe: ${design.name} — ${design.description}`,
+        ...(styleCues ? ['', styleCues] : []),
         '',
         'Section copy to render (already written in the target language — bake it in verbatim, do not translate or invent new copy):',
         JSON.stringify(section, null, 2),
@@ -925,6 +972,7 @@ export async function runGeneration(
         '',
         `Theme tokens (use via theme.colors.*): ${JSON.stringify(theme.colors)}`,
         `Design family vibe: ${design.name} — ${design.description}`,
+        ...(styleCues ? ['', styleCues] : []),
         '',
         'Section copy to render (already written in the target language — bake it in verbatim, do not translate or invent new copy):',
         JSON.stringify(signatureCopy, null, 2),
