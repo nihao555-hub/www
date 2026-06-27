@@ -1,7 +1,6 @@
 import type { File as PayloadFile } from 'payload'
 
 import config from '@payload-config'
-import { headers as getHeaders } from 'next/headers'
 import { getPayload } from 'payload'
 
 import {
@@ -28,15 +27,6 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const payload = await getPayload({ config })
-
-  // Only authenticated admin users may generate sites.
-  const { user } = await payload.auth({ headers: await getHeaders() })
-  if (!user) {
-    return Response.json(
-      { error: 'Unauthorized. Please log into the admin panel first.' },
-      { status: 401 },
-    )
-  }
 
   let form: FormData
   try {
