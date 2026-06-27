@@ -97,6 +97,42 @@ export type TemplateContent = {
   }[]
   cta?: { title?: string; body?: string; button?: { label: string; href: string } }
   footer?: { tagline?: string; copyright?: string }
+  /** Products / Services page content (multi-page template mode). */
+  products?: {
+    eyebrow?: string
+    title?: string
+    subtitle?: string
+    cta?: string
+    items?: { name: string; price?: string; blurb?: string }[]
+  }
+  /** About page content (multi-page template mode). */
+  about?: {
+    eyebrow?: string
+    title?: string
+    lead?: string
+    story?: string[]
+    valuesTitle?: string
+    values?: { icon?: string; title: string; body: string }[]
+    stats?: { value: string; label: string }[]
+  }
+  /** Contact page content (multi-page template mode). */
+  contact?: {
+    eyebrow?: string
+    title?: string
+    intro?: string
+    email?: string
+    phone?: string
+    address?: string
+    hours?: string
+    emailLabel?: string
+    phoneLabel?: string
+    addressLabel?: string
+    hoursLabel?: string
+    namePlaceholder?: string
+    emailPlaceholder?: string
+    messagePlaceholder?: string
+    submitLabel?: string
+  }
   /** slot key → index into the resolved images array; filled by the pipeline */
   _img?: Record<string, number>
   [k: string]: unknown
@@ -124,12 +160,20 @@ const PREAMBLE = [
   'var cta = co.cta || {};',
   'var nav = arr(co.nav);',
   'var brand = t(co.brand, theme.name);',
+  // ---- multi-page navigation (injected by the renderer as the `pageNav` prop) ----
+  'var _pn = (typeof pageNav !== "undefined" && pageNav) ? pageNav : null;',
+  'var curPath = _pn ? (_pn.path || "") : "";',
+  'var navItems = (_pn && _pn.pages && _pn.pages.length)',
+  '  ? _pn.pages.map(function(p){ return { label: p.navLabel, path: p.path, href: p.path ? "/" + p.path : "/" }; })',
+  '  : nav.map(function(n){ return { label: n.label, path: null, href: t(n.href, "#") }; });',
+  // round-robin into whatever resolved images exist (used by inner pages)
+  'var imgAt = function(i){ return (images && images.length) ? images[((i % images.length) + images.length) % images.length] : ""; };',
 ].join('\n')
 
 /** Wrap a template body (`return (...)`) into a sandbox-ready component string. */
 function makeComponent(body: string): string {
   return (
-    'function LandingPage({ theme, images, content }) {\n' +
+    'function LandingPage({ theme, images, content, pageNav }) {\n' +
     PREAMBLE +
     '\n' +
     body +
@@ -168,10 +212,18 @@ export function defaultImageMap(t: LandingTemplate, imageCount: number): Record<
   return map
 }
 
+/** Strip slashes from a cta/nav url to a bare page path ('' for home). */
+function normalizePath(url: string): string {
+  return (url || '').trim().replace(/^\/+|\/+$/g, '')
+}
+
 /**
- * Build a complete, chromeless SiteSpec from a template + filled content. The
- * resulting spec renders ONLY the template component (it provides its own nav +
- * footer), with a minimal themed fallback if the JSX ever fails to compile.
+ * Build a complete, chromeless, MULTI-PAGE SiteSpec from a template + filled
+ * content. Every template becomes a real independent site with four routed
+ * pages — Home (the template's signature design), Products/Services, About, and
+ * Contact — that share the template's nav/footer and theme. Page switching is
+ * client-side (the renderer intercepts the chromeless nav's in-site links); each
+ * page has a minimal themed fallback if its JSX ever fails to compile.
  */
 export function buildTemplateSpec(template: LandingTemplate, content: TemplateContent): SiteSpec {
   const brand = content.brand || template.placeholder.brand || template.name
@@ -187,13 +239,49 @@ export function buildTemplateSpec(template: LandingTemplate, content: TemplateCo
     cta: primary ? { label: primary.label, url: primary.href } : { label: 'Learn more', url: '#' },
   }
 
-  const section: SpecSection = {
+  const mkSection = (code: string): SpecSection => ({
     kind: 'jsx',
-    code: template.code,
+    code,
     source: `template:${template.id}`,
     content: content as Record<string, unknown>,
     fallback,
+  })
+
+  // Prefer the localized nav label the fill agent wrote for each route, falling
+  // back to an English default.
+  const navItems = Array.isArray(content.nav) ? content.nav : []
+  const navLabel = (path: string, fb: string): string => {
+    const match = navItems.find((n) => normalizePath(String(n?.href ?? '')) === path)
+    const label = match && typeof match.label === 'string' ? match.label.trim() : ''
+    return label || fb
   }
+
+  const pages: SiteSpec['pages'] = [
+    {
+      path: '',
+      navLabel: navLabel('', 'Home'),
+      sections: [mkSection(template.code)],
+      meta: { title, description },
+    },
+    {
+      path: 'products',
+      navLabel: navLabel('products', 'Products'),
+      sections: [mkSection(PRODUCTS_PAGE)],
+      meta: { title: `${content.products?.title || 'Products & Services'} — ${brand}`, description },
+    },
+    {
+      path: 'about',
+      navLabel: navLabel('about', 'About'),
+      sections: [mkSection(ABOUT_PAGE)],
+      meta: { title: `${content.about?.title || 'About'} — ${brand}`, description },
+    },
+    {
+      path: 'contact',
+      navLabel: navLabel('contact', 'Contact'),
+      sections: [mkSection(CONTACT_PAGE)],
+      meta: { title: `${content.contact?.title || 'Contact'} — ${brand}`, description },
+    },
+  ]
 
   return {
     siteName: brand,
@@ -203,14 +291,7 @@ export function buildTemplateSpec(template: LandingTemplate, content: TemplateCo
     designId: template.designId || 'minimal-clean',
     chrome: 'none',
     templateRef: template.id,
-    pages: [
-      {
-        path: '',
-        navLabel: 'Home',
-        sections: [section],
-        meta: { title, description },
-      },
-    ],
+    pages,
     meta: { title, description },
   }
 }
@@ -220,16 +301,22 @@ export function buildTemplateSpec(template: LandingTemplate, content: TemplateCo
 /* -------------------------------------------------------------------------- */
 
 /** JSON shape (described in prose) the fill agent must return. */
-export const TEMPLATE_CONTENT_SCHEMA = `Return ONLY a JSON object with this shape (omit fields the template doesn't need; keep arrays short and punchy):
+export const TEMPLATE_CONTENT_SCHEMA = `You are filling a COMPLETE MULTI-PAGE independent website with four real pages: Home, Products/Services, About, and Contact. Write distinct, real copy for ALL of them.
+Return ONLY a JSON object with this shape (omit fields the template doesn't need; keep arrays short and punchy):
 {
   "brand": string,                         // brand / site name
-  "nav": [{ "label": string, "href": "#anchor" }],   // 3-5 nav links to in-page anchors
+  "nav": [                                 // EXACTLY these 4 site pages, labels localized, hrefs verbatim
+    { "label": string, "href": "/" },
+    { "label": string, "href": "/products" },
+    { "label": string, "href": "/about" },
+    { "label": string, "href": "/contact" }
+  ],
   "hero": {
     "eyebrow": string,                     // tiny kicker above the title (optional)
     "title": string,                       // 4-9 words, the main headline
     "subtitle": string,                    // 1-2 sentences
-    "primaryCta": { "label": string, "href": "#" },
-    "secondaryCta": { "label": string, "href": "#" },
+    "primaryCta": { "label": string, "href": "/products" },   // CTA hrefs MUST be in-site paths: "/", "/products", "/about", "/contact"
+    "secondaryCta": { "label": string, "href": "/contact" },
     "badges": [string]                     // 2-4 short trust chips (optional)
   },
   "logos": [string],                       // 4-6 short partner/feature words (trust strip)
@@ -241,16 +328,40 @@ export const TEMPLATE_CONTENT_SCHEMA = `Return ONLY a JSON object with this shap
   "showcase": {
     "title": string, "body": string,
     "bullets": [string],                   // 3-4 short benefit lines
-    "cta": { "label": string, "href": "#" }
+    "cta": { "label": string, "href": "/contact" }
   },
   "gallery": { "title": string, "subtitle": string },
   "testimonials": [{ "quote": string, "name": string, "role": string }],  // 1-3
   "faq": [{ "q": string, "a": string }],   // 3-5
-  "pricing": [{ "name": string, "price": string, "period": string, "features": [string], "cta": { "label": string, "href": "#" }, "highlighted": boolean }],
-  "cta": { "title": string, "body": string, "button": { "label": string, "href": "#" } },
-  "footer": { "tagline": string, "copyright": string }
+  "pricing": [{ "name": string, "price": string, "period": string, "features": [string], "cta": { "label": string, "href": "/contact" }, "highlighted": boolean }],
+  "cta": { "title": string, "body": string, "button": { "label": string, "href": "/contact" } },
+  "footer": { "tagline": string, "copyright": string },
+
+  // ---- PRODUCTS / SERVICES PAGE (required) ----
+  "products": {
+    "eyebrow": string, "title": string, "subtitle": string,
+    "cta": string,                         // per-card link label, e.g. "Inquire"
+    "items": [{ "name": string, "price": string, "blurb": string }]  // 4-9 real products/services; price optional
+  },
+
+  // ---- ABOUT PAGE (required) ----
+  "about": {
+    "eyebrow": string, "title": string, "lead": string,
+    "story": [string],                     // 2-3 real paragraphs about the company
+    "valuesTitle": string,
+    "values": [{ "icon": string, "title": string, "body": string }],  // 3-6; icon = lucide-react name
+    "stats": [{ "value": string, "label": string }]   // 3 credibility metrics
+  },
+
+  // ---- CONTACT PAGE (required) ----
+  "contact": {
+    "eyebrow": string, "title": string, "intro": string,
+    "email": string, "phone": string, "address": string, "hours": string,
+    "emailLabel": string, "phoneLabel": string, "addressLabel": string, "hoursLabel": string,
+    "namePlaceholder": string, "emailPlaceholder": string, "messagePlaceholder": string, "submitLabel": string
+  }
 }
-Write all human-readable copy in {LANGUAGE}. Use real, specific, on-brand copy — never lorem ipsum or placeholder text. "icon" values must be valid lucide-react icon names (e.g. "Sparkles", "ShieldCheck", "Zap", "Leaf", "Truck").`
+Write all human-readable copy in {LANGUAGE}. Use real, specific, on-brand copy — never lorem ipsum or placeholder text. Make Products, About and Contact each substantial and distinct (do not just repeat the home page). "icon" values must be valid lucide-react icon names (e.g. "Sparkles", "ShieldCheck", "Zap", "Leaf", "Truck"). All CTA/nav hrefs MUST be in-site paths ("/", "/products", "/about", "/contact").`
 
 /** Describe a template's image slots for the fill/image step. */
 export function imageSlotBrief(template: LandingTemplate): string {
@@ -268,22 +379,156 @@ export function imageSlotBrief(template: LandingTemplate): string {
 const NAV = `
 <header className="sticky top-0 z-50 w-full backdrop-blur-md" style={{ background: mix(c.background, 82), borderBottom: "1px solid " + mix(c.border, 70) }}>
   <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-    <span className="text-lg font-extrabold tracking-tight" style={{ fontFamily: heading, color: c.foreground }}>{brand}</span>
+    <a href="/" className="text-lg font-extrabold tracking-tight" style={{ fontFamily: heading, color: c.foreground }}>{brand}</a>
     <nav className="hidden items-center gap-8 md:flex">
-      {nav.map(function(n, i){ return (<a key={i} href={t(n.href, "#")} className="text-sm font-medium transition-opacity hover:opacity-60" style={{ color: mix(c.foreground, 78) }}>{n.label}</a>); })}
+      {navItems.map(function(it, i){ return (<a key={i} href={it.href} className="text-sm font-medium transition-opacity hover:opacity-60" style={{ color: it.path === curPath ? c.primary : mix(c.foreground, 78) }}>{it.label}</a>); })}
     </nav>
-    <a href={t((hero.primaryCta||{}).href, "#")} className="rounded-full px-5 py-2 text-sm font-semibold transition-transform hover:-translate-y-0.5" style={{ background: c.primary, color: c.primaryForeground }}>{t((hero.primaryCta||{}).label, "Get started")}</a>
+    <a href="/contact" className="rounded-full px-5 py-2 text-sm font-semibold transition-transform hover:-translate-y-0.5" style={{ background: c.primary, color: c.primaryForeground }}>{t((hero.primaryCta||{}).label, "Get in touch")}</a>
   </div>
 </header>`
 
 const FOOTER = `
 <footer className="px-6 py-12" style={{ borderTop: "1px solid " + mix(c.border, 70), background: mix(c.foreground, 3) }}>
-  <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 md:flex-row">
-    <span className="text-base font-bold" style={{ fontFamily: heading, color: c.foreground }}>{brand}</span>
-    <p className="text-sm" style={{ color: mix(c.foreground, 60) }}>{t((co.footer||{}).tagline, t(hero.subtitle, ""))}</p>
-    <p className="text-xs" style={{ color: mix(c.foreground, 50) }}>{t((co.footer||{}).copyright, "© " + brand)}</p>
+  <div className="mx-auto flex max-w-6xl flex-col gap-6 md:flex-row md:items-start md:justify-between">
+    <div className="max-w-xs">
+      <span className="text-base font-bold" style={{ fontFamily: heading, color: c.foreground }}>{brand}</span>
+      <p className="mt-2 text-sm" style={{ color: mix(c.foreground, 60) }}>{t((co.footer||{}).tagline, t(hero.subtitle, ""))}</p>
+    </div>
+    <nav className="flex flex-wrap gap-x-8 gap-y-2">
+      {navItems.map(function(it, i){ return (<a key={i} href={it.href} className="text-sm font-medium transition-opacity hover:opacity-70" style={{ color: mix(c.foreground, 70) }}>{it.label}</a>); })}
+    </nav>
   </div>
+  <p className="mx-auto mt-8 max-w-6xl text-xs" style={{ color: mix(c.foreground, 50) }}>{t((co.footer||{}).copyright, "© " + brand)}</p>
 </footer>`
+
+/* -------------------------------------------------------------------------- */
+/* Shared inner pages (Products / About / Contact) reused by EVERY template.   */
+/* They share the template's NAV + FOOTER and theme tokens so the whole multi- */
+/* page site stays visually consistent, and gracefully fall back to the home   */
+/* template's content (features / showcase / stats) when page-specific copy is  */
+/* missing.                                                                     */
+/* -------------------------------------------------------------------------- */
+
+/** Products / Services listing page. */
+const PRODUCTS_PAGE = makeComponent(`
+var prod = co.products || {};
+var items = arr(prod.items);
+if (!items.length) { items = arr(feat.items).map(function(f){ return { name: f.title, blurb: f.body }; }); }
+return (
+<div style={{ background: c.background, color: c.foreground, fontFamily: bodyFont }}>
+  ${NAV}
+  <section className="px-6 pt-16 pb-8">
+    <div className="mx-auto max-w-6xl">
+      <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: c.primary }}>{t(prod.eyebrow, "Our offering")}</span>
+      <h1 className="mt-3 text-4xl font-extrabold tracking-tight sm:text-5xl" style={{ fontFamily: heading }}>{t(prod.title, "Products & services")}</h1>
+      <p className="mt-4 max-w-2xl text-lg break-words" style={{ color: mix(c.foreground, 64) }}>{t(prod.subtitle, t(feat.subtitle))}</p>
+    </div>
+  </section>
+  <section className="px-6 pb-20">
+    <div className="mx-auto grid max-w-6xl gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      {items.map(function(p, i){ return (
+        <motion.div key={i} initial={{ opacity: 0, y: 18 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.4, delay: (i % 3) * 0.05 }} className="group flex flex-col overflow-hidden rounded-2xl" style={{ background: mix(c.foreground, 4), border: "1px solid " + mix(c.border, 70) }}>
+          <div className="overflow-hidden" style={{ aspectRatio: "4/3", background: mix(c.primary, 12) }}>
+            {imgAt(i) ? (<img src={imgAt(i)} alt={t(p.name, "")} className="block h-full w-full transition-transform duration-500 group-hover:scale-105" style={{ objectFit: "cover" }} />) : null}
+          </div>
+          <div className="flex flex-1 flex-col p-5">
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="text-lg font-semibold break-words" style={{ fontFamily: heading }}>{t(p.name, "Item " + (i + 1))}</h3>
+              {t(p.price) ? (<span className="shrink-0 text-sm font-bold" style={{ color: c.primary }}>{p.price}</span>) : null}
+            </div>
+            <p className="mt-2 flex-1 text-sm leading-relaxed break-words" style={{ color: mix(c.foreground, 64) }}>{t(p.blurb)}</p>
+            <a href="/contact" className="mt-4 inline-flex items-center gap-1 text-sm font-semibold" style={{ color: c.primary }}>{t(prod.cta, "Inquire")} <Icon name="ArrowRight" className="h-4 w-4" /></a>
+          </div>
+        </motion.div>); })}
+    </div>
+  </section>
+  ${FOOTER}
+</div>);
+`)
+
+/** About / company-story page. */
+const ABOUT_PAGE = makeComponent(`
+var about = co.about || {};
+var story = arr(about.story);
+if (!story.length && t(show.body)) story = [show.body];
+var values = arr(about.values);
+if (!values.length) values = arr(feat.items);
+var stats = arr(about.stats);
+if (!stats.length) stats = arr(co.stats);
+return (
+<div style={{ background: c.background, color: c.foreground, fontFamily: bodyFont }}>
+  ${NAV}
+  <section className="px-6 pt-16 pb-10">
+    <div className="mx-auto max-w-3xl text-center">
+      <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: c.primary }}>{t(about.eyebrow, "About us")}</span>
+      <h1 className="mt-3 text-4xl font-extrabold tracking-tight sm:text-5xl" style={{ fontFamily: heading }}>{t(about.title, "Our story")}</h1>
+      <p className="mx-auto mt-5 max-w-2xl text-lg break-words" style={{ color: mix(c.foreground, 64) }}>{t(about.lead, t(hero.subtitle))}</p>
+    </div>
+  </section>
+  <section className="px-6 pb-16">
+    <div className="mx-auto grid max-w-6xl items-center gap-10 lg:grid-cols-2">
+      <div className="overflow-hidden rounded-2xl" style={{ border: "1px solid " + mix(c.border, 70), aspectRatio: "4/3", background: mix(c.primary, 12) }}>
+        {imgAt(0) ? (<img src={imgAt(0)} alt={t(about.title, brand)} className="block h-full w-full" style={{ objectFit: "cover" }} />) : null}
+      </div>
+      <div className="min-w-[18rem]">
+        {story.length ? story.map(function(p, i){ return (<p key={i} className="mb-4 text-base leading-relaxed break-words" style={{ color: mix(c.foreground, 74) }}>{p}</p>); }) : null}
+      </div>
+    </div>
+  </section>
+  {values.length ? (
+  <section className="px-6 py-16" style={{ background: mix(c.foreground, 3) }}>
+    <h2 className="mx-auto mb-10 max-w-2xl text-center text-3xl font-bold tracking-tight" style={{ fontFamily: heading }}>{t(about.valuesTitle, "What we stand for")}</h2>
+    <div className="mx-auto grid max-w-5xl gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      {values.map(function(v, i){ return (<div key={i} className="rounded-2xl p-6" style={{ background: c.background, border: "1px solid " + mix(c.border, 70) }}><div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl" style={{ background: mix(c.primary, 16), color: c.primary }}><Icon name={t(v.icon, "Check")} className="h-5 w-5" /></div><h3 className="text-lg font-semibold break-words" style={{ fontFamily: heading }}>{t(v.title)}</h3><p className="mt-2 text-sm leading-relaxed break-words" style={{ color: mix(c.foreground, 64) }}>{t(v.body)}</p></div>); })}
+    </div>
+  </section>) : null}
+  {stats.length ? (
+  <section className="px-6 py-14">
+    <div className="mx-auto grid max-w-4xl gap-8 text-center sm:grid-cols-3">
+      {stats.map(function(s, i){ return (<div key={i}><div className="text-4xl font-extrabold" style={{ fontFamily: heading, color: c.primary }}>{s.value}</div><div className="mt-1 text-sm" style={{ color: mix(c.foreground, 60) }}>{s.label}</div></div>); })}
+    </div>
+  </section>) : null}
+  ${FOOTER}
+</div>);
+`)
+
+/** Contact page with company details + a (non-submitting) enquiry form. */
+const CONTACT_PAGE = makeComponent(`
+var contact = co.contact || {};
+var rows = [
+  { icon: "Mail", label: t(contact.emailLabel, "Email"), value: t(contact.email) },
+  { icon: "Phone", label: t(contact.phoneLabel, "Phone"), value: t(contact.phone) },
+  { icon: "MapPin", label: t(contact.addressLabel, "Address"), value: t(contact.address) },
+  { icon: "Clock", label: t(contact.hoursLabel, "Hours"), value: t(contact.hours) },
+].filter(function(r){ return r.value; });
+return (
+<div style={{ background: c.background, color: c.foreground, fontFamily: bodyFont }}>
+  ${NAV}
+  <section className="px-6 pt-16 pb-10">
+    <div className="mx-auto max-w-3xl text-center">
+      <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: c.primary }}>{t(contact.eyebrow, "Contact")}</span>
+      <h1 className="mt-3 text-4xl font-extrabold tracking-tight sm:text-5xl" style={{ fontFamily: heading }}>{t(contact.title, "Get in touch")}</h1>
+      <p className="mx-auto mt-5 max-w-2xl text-lg break-words" style={{ color: mix(c.foreground, 64) }}>{t(contact.intro, t(hero.subtitle))}</p>
+    </div>
+  </section>
+  <section className="px-6 pb-20">
+    <div className="mx-auto grid max-w-5xl gap-10 lg:grid-cols-2">
+      <div className="space-y-4">
+        {rows.length ? rows.map(function(r, i){ return (<div key={i} className="flex items-start gap-4 rounded-2xl p-5" style={{ background: mix(c.foreground, 4), border: "1px solid " + mix(c.border, 70) }}><div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl" style={{ background: mix(c.primary, 16), color: c.primary }}><Icon name={r.icon} className="h-5 w-5" /></div><div className="min-w-0"><div className="text-xs font-semibold uppercase tracking-wide" style={{ color: mix(c.foreground, 55) }}>{r.label}</div><div className="mt-1 break-words text-base font-medium">{r.value}</div></div></div>); }) : null}
+      </div>
+      <form onSubmit={function(e){ e.preventDefault(); }} className="rounded-2xl p-6" style={{ background: mix(c.foreground, 4), border: "1px solid " + mix(c.border, 70) }}>
+        <div className="grid gap-4">
+          <input type="text" placeholder={t(contact.namePlaceholder, "Your name")} className="w-full rounded-lg px-4 py-3 text-sm outline-none" style={{ background: c.background, border: "1px solid " + mix(c.border, 70), color: c.foreground }} />
+          <input type="email" placeholder={t(contact.emailPlaceholder, "Your email")} className="w-full rounded-lg px-4 py-3 text-sm outline-none" style={{ background: c.background, border: "1px solid " + mix(c.border, 70), color: c.foreground }} />
+          <textarea rows={5} placeholder={t(contact.messagePlaceholder, "How can we help?")} className="w-full rounded-lg px-4 py-3 text-sm outline-none" style={{ background: c.background, border: "1px solid " + mix(c.border, 70), color: c.foreground }} />
+          <button type="submit" className="rounded-full px-6 py-3 text-sm font-semibold" style={{ background: c.primary, color: c.primaryForeground }}>{t(contact.submitLabel, "Send message")}</button>
+        </div>
+      </form>
+    </div>
+  </section>
+  ${FOOTER}
+</div>);
+`)
 
 /* ---- 1. Aurora SaaS (cruip/open-react-template) -------------------------- */
 
