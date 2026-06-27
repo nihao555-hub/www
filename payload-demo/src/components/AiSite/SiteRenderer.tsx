@@ -192,17 +192,20 @@ export const SiteRenderer: React.FC<Props> = ({ spec, images }) => {
     ['--radius' as string]: theme.radius,
   }
   const headingFont = `'${theme.fonts.heading}', system-ui, sans-serif`
+  const chromeless = spec.chrome === 'none'
 
   return (
     <DesignContext.Provider value={design}>
       <div style={wrapStyle} className="min-h-screen w-full antialiased">
-        <Header
-          spec={spec}
-          theme={theme}
-          active={page.path}
-          onNav={go}
-          headingFont={headingFont}
-        />
+        {!chromeless && (
+          <Header
+            spec={spec}
+            theme={theme}
+            active={page.path}
+            onNav={go}
+            headingFont={headingFont}
+          />
+        )}
 
         <main>
           {page.hero ? (
@@ -257,7 +260,9 @@ export const SiteRenderer: React.FC<Props> = ({ spec, images }) => {
           ))}
         </main>
 
-        <Footer spec={spec} theme={theme} onNav={go} headingFont={headingFont} />
+        {!chromeless && (
+          <Footer spec={spec} theme={theme} onNav={go} headingFont={headingFont} />
+        )}
       </div>
     </DesignContext.Provider>
   )
@@ -790,7 +795,7 @@ const SectionView: React.FC<{
       return (
         <DynamicComponentRenderer
           code={section.code}
-          componentProps={{ theme, images }}
+          componentProps={{ theme, images, content: section.content }}
           fallback={
             section.fallback ? (
               <SectionView

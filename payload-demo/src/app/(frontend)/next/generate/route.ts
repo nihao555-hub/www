@@ -4,7 +4,12 @@ import config from '@payload-config'
 import { headers as getHeaders } from 'next/headers'
 import { getPayload } from 'payload'
 
-import { runGeneration, type GenEvent, type MerchantInput } from '@/lib/ai/generate'
+import {
+  runGeneration,
+  runTemplateGeneration,
+  type GenEvent,
+  type MerchantInput,
+} from '@/lib/ai/generate'
 import { isRelayConfigured } from '@/lib/ai/relay'
 
 export const maxDuration = 300
@@ -40,6 +45,7 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ error: 'Expected multipart/form-data.' }, { status: 400 })
   }
 
+  const mode = String(form.get('mode') ?? '').trim() === 'template' ? 'template' : 'creative'
   const merchant: MerchantInput = {
     name: String(form.get('name') ?? '').trim(),
     industry: String(form.get('industry') ?? '').trim() || undefined,
@@ -47,10 +53,14 @@ export async function POST(req: Request): Promise<Response> {
     brief: String(form.get('brief') ?? '').trim() || undefined,
     language: String(form.get('language') ?? '').trim() || undefined,
     themeId: String(form.get('themeId') ?? '').trim() || undefined,
+    mode,
+    landingTemplateId: String(form.get('landingTemplateId') ?? '').trim() || undefined,
   }
 
   const files = form.getAll('images').filter((f): f is File => f instanceof File && f.size > 0)
-  if (files.length === 0) {
+  // Creative mode needs at least one product image to design from; template mode
+  // can fill image slots with gpt-image-2, so uploads are optional there.
+  if (mode !== 'template' && files.length === 0) {
     return Response.json({ error: 'At least one product image is required.' }, { status: 400 })
   }
   if (files.length > MAX_IMAGES) {
@@ -97,12 +107,8 @@ export async function POST(req: Request): Promise<Response> {
         send('step', { type: 'step', key: 'upload', label: 'Uploading images', status: 'done' })
 
         // 2) Run the AI design pipeline, streaming progress to the client.
-        const { spec, generatedImages } = await runGeneration(
-          merchant,
-          imageDataUrls,
-          emit,
-          req.signal,
-        )
+        const run = merchant.mode === 'template' ? runTemplateGeneration : runGeneration
+        const { spec, generatedImages } = await run(merchant, imageDataUrls, emit, req.signal)
 
         // 2b) Store any AI-generated images in the media library, preserving the
         // order the pipeline appended them (uploaded images first, then

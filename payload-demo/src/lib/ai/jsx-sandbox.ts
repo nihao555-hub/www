@@ -55,6 +55,22 @@ const Passthrough: React.FC<{ children?: React.ReactNode }> = ({ children }) =>
   React.createElement(React.Fragment, null, children)
 Passthrough.displayName = 'SandboxPassthrough'
 
+/**
+ * Render a lucide-react icon by string name (e.g. `<Icon name={item.icon} />`).
+ * Used by template-mode components whose icon names come from filled content.
+ * Falls back to a neutral dot if the name is missing/unknown so it never throws.
+ */
+const DynamicIcon: React.FC<{ name?: string } & Record<string, unknown>> = ({ name, ...rest }) => {
+  const lib = Lucide as unknown as Record<string, React.ComponentType<Record<string, unknown>>>
+  const Cmp =
+    (name && lib[name]) ||
+    lib.Sparkles ||
+    lib.Circle ||
+    (Passthrough as React.ComponentType<Record<string, unknown>>)
+  return React.createElement(Cmp, rest)
+}
+DynamicIcon.displayName = 'SandboxDynamicIcon'
+
 /** Pure, side-effect-free globals the component is allowed to see. */
 const SAFE_GLOBALS: Record<string, unknown> = {
   Math,
@@ -122,6 +138,7 @@ function buildScope(extra: Record<string, unknown>): Record<string, unknown> {
     cn,
     clsx,
     twMerge,
+    Icon: DynamicIcon,
     motion,
     AnimatePresence,
     useScroll,

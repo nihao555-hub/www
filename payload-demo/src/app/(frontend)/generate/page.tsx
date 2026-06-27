@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 
 import React from 'react'
 
+import { landingTemplateCatalog } from '@/lib/ai/site-templates'
 import { GenerateForm } from './GenerateForm'
 
 export const metadata: Metadata = {
@@ -10,5 +11,5 @@ export const metadata: Metadata = {
 }
 
 export default function GeneratePage() {
-  return <GenerateForm />
+  return <GenerateForm templates={landingTemplateCatalog()} />
 }

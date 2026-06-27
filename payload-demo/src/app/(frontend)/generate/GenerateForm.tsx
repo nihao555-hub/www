@@ -2,13 +2,16 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Loader2, Plus, Sparkles } from 'lucide-react'
+import { Check, Loader2, Plus, Sparkles, Star, Wand2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { PromptInputBox } from '@/components/ui/prompt-input-box'
 import { THEMES } from '@/lib/ai/themes'
+import type { LandingTemplateMeta } from '@/lib/ai/site-templates'
 import { AgentWorkflow } from './AgentWorkflow'
+
+type GenMode = 'creative' | 'template'
 
 const LANGUAGES: { code: string; label: string }[] = [
   { code: 'en', label: 'English' },
@@ -79,10 +82,14 @@ const EXAMPLE_PROMPTS: { emoji: string; title: string; brief: string }[] = [
   },
 ]
 
-export const GenerateForm: React.FC = () => {
+export const GenerateForm: React.FC<{ templates?: LandingTemplateMeta[] }> = ({
+  templates = [],
+}) => {
   const [language, setLanguage] = useState('en')
   const [themeId, setThemeId] = useState('auto')
   const [brief, setBrief] = useState('')
+  const [mode, setMode] = useState<GenMode>('creative')
+  const [templateId, setTemplateId] = useState<string | null>(templates[0]?.id ?? null)
 
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -138,8 +145,14 @@ export const GenerateForm: React.FC = () => {
 
   const handleSend = async (message: string, sentFiles: File[]) => {
     if (running) return
-    if (sentFiles.length === 0) {
+    // Creative mode designs from product photos, so an image is required.
+    // Template mode can fill image slots with gpt-image-2, so uploads are optional.
+    if (mode === 'creative' && sentFiles.length === 0) {
       setError('请至少上传一张商品图（AI 看图设计）。')
+      return
+    }
+    if (mode === 'template' && !templateId) {
+      setError('请先选择一个模板。')
       return
     }
     if (!message.trim()) {
@@ -163,6 +176,8 @@ export const GenerateForm: React.FC = () => {
     const data = new FormData()
     data.set('brief', message)
     data.set('language', language)
+    data.set('mode', mode)
+    if (mode === 'template' && templateId) data.set('landingTemplateId', templateId)
     if (themeId !== 'auto') data.set('themeId', themeId)
     sentFiles.forEach((f) => data.append('images', f))
 
@@ -343,9 +358,34 @@ export const GenerateForm: React.FC = () => {
               一句话生成你的独立站
             </h2>
             <p className="max-w-xl text-sm text-muted-foreground">
-              描述你的品牌与产品并上传商品图，世界级设计 Agent 会自动调研 21st.dev
-              组件、规划版式、撰写文案、批量配图并自我打磨，产出可直接发布的独立站。
+              {mode === 'creative'
+                ? '自由创意模式：世界级设计 Agent 会自动调研 21st.dev 组件、规划版式、撰写文案、批量配图并自我打磨，从零设计一个独一无二的独立站。'
+                : '套用模板模式：从高 star、顶级设计师打造的开源模板中挑一个，AI 自动按你的简介填文案、用你的图（缺图用 AI 生成），快速产出一个精致独立站。'}
             </p>
+          </div>
+
+          {/* Mode toggle: free-creative vs template */}
+          <div className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 p-1">
+            {(
+              [
+                { key: 'creative' as const, label: '自由创意', Icon: Wand2 },
+                { key: 'template' as const, label: '套用模板', Icon: Star },
+              ]
+            ).map(({ key, label, Icon }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setMode(key)}
+                className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+                  mode === key
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Icon className="size-3.5" />
+                {label}
+              </button>
+            ))}
           </div>
 
           <div className="w-full max-w-2xl">
@@ -357,30 +397,77 @@ export const GenerateForm: React.FC = () => {
             )}
           </div>
 
-          <div className="w-full max-w-2xl">
-            <p className="mb-2 text-center text-xs text-muted-foreground">试试这些示例</p>
-            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-              {EXAMPLE_PROMPTS.map((ex) => (
-                <button
-                  key={ex.title}
-                  type="button"
-                  onClick={() => setBrief(ex.brief)}
-                  className="group flex items-start gap-3 rounded-xl border border-border bg-card p-3 text-left transition-all hover:border-primary/50 hover:bg-accent hover:shadow-sm"
-                >
-                  <span className="text-xl leading-none">{ex.emoji}</span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium">{ex.title}</span>
-                    <span className="line-clamp-2 block text-xs text-muted-foreground">
-                      {ex.brief}
+          {mode === 'creative' ? (
+            <div className="w-full max-w-2xl">
+              <p className="mb-2 text-center text-xs text-muted-foreground">试试这些示例</p>
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                {EXAMPLE_PROMPTS.map((ex) => (
+                  <button
+                    key={ex.title}
+                    type="button"
+                    onClick={() => setBrief(ex.brief)}
+                    className="group flex items-start gap-3 rounded-xl border border-border bg-card p-3 text-left transition-all hover:border-primary/50 hover:bg-accent hover:shadow-sm"
+                  >
+                    <span className="text-xl leading-none">{ex.emoji}</span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium">{ex.title}</span>
+                      <span className="line-clamp-2 block text-xs text-muted-foreground">
+                        {ex.brief}
+                      </span>
                     </span>
-                  </span>
-                </button>
-              ))}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-3 text-center text-[11px] text-muted-foreground">
+                提示：点击示例会填入输入框，记得上传一张商品图再点发送。
+              </p>
             </div>
-            <p className="mt-3 text-center text-[11px] text-muted-foreground">
-              提示：点击示例会填入输入框，记得上传一张商品图再点发送。
-            </p>
-          </div>
+          ) : (
+            <div className="w-full max-w-3xl">
+              <p className="mb-2 text-center text-xs text-muted-foreground">
+                选择一个模板（{templates.length} 个 · 均来自高 star 开源项目）
+              </p>
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                {templates.map((tpl) => {
+                  const selected = templateId === tpl.id
+                  return (
+                    <button
+                      key={tpl.id}
+                      type="button"
+                      onClick={() => setTemplateId(tpl.id)}
+                      className={`group relative flex flex-col gap-1.5 rounded-xl border p-3 text-left transition-all hover:shadow-sm ${
+                        selected
+                          ? 'border-primary bg-primary/5 shadow-sm'
+                          : 'border-border bg-card hover:border-primary/50 hover:bg-accent'
+                      }`}
+                    >
+                      {selected && (
+                        <span className="absolute right-2 top-2 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                          <Check className="size-3" />
+                        </span>
+                      )}
+                      <span className="flex items-center gap-1.5">
+                        <span className="block text-sm font-semibold">{tpl.name}</span>
+                      </span>
+                      <span className="block text-[11px] font-medium text-primary/80">
+                        {tpl.category}
+                      </span>
+                      <span className="line-clamp-2 block text-xs text-muted-foreground">
+                        {tpl.description}
+                      </span>
+                      <span className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <Star className="size-3 fill-amber-400 text-amber-400" />
+                        {(tpl.source.stars / 1000).toFixed(1)}k · {tpl.source.repo}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="mt-3 text-center text-[11px] text-muted-foreground">
+                提示：用一段话描述你的品牌即可；上传商品图可选（缺图会用 AI 自动生成）。
+              </p>
+            </div>
+          )}
         </main>
       </div>
     )
@@ -418,14 +505,11 @@ export const GenerateForm: React.FC = () => {
           </CardContent>
         </Card>
 
-        <div>
-          {promptBox}
-          {error && (
-            <div className="mt-2 rounded-md border border-destructive/50 bg-destructive/10 p-2 text-xs text-destructive">
-              {error}
-            </div>
-          )}
-        </div>
+        {error && (
+          <div className="rounded-md border border-destructive/50 bg-destructive/10 p-2 text-xs text-destructive">
+            {error}
+          </div>
+        )}
       </div>
 
       {/* Right: full live independent-site preview */}

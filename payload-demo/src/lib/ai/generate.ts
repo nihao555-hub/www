@@ -25,6 +25,15 @@ import {
   templateBlueprintForPrompt,
   pickTemplateFromAnalysis,
 } from './templates'
+import {
+  getLandingTemplate,
+  buildTemplateSpec,
+  defaultImageMap,
+  TEMPLATE_CONTENT_SCHEMA,
+  DEFAULT_LANDING_TEMPLATE_ID,
+  type TemplateContent,
+  type LandingTemplate,
+} from './site-templates'
 import type { ComponentInspiration, IconResult } from './twentyfirst'
 import { isMcpConfigured } from './twentyfirst-mcp'
 import {
@@ -48,6 +57,11 @@ export type MerchantInput = {
   templateId?: string
   /** optional design family id to force; when omitted the AI chooses one */
   designId?: string
+  /** generation mode: "creative" (free, plan-first agent) or "template"
+   * (fill a curated high-star landing template). Defaults to "creative". */
+  mode?: 'creative' | 'template'
+  /** which curated landing template to fill when mode === "template" */
+  landingTemplateId?: string
 }
 
 /** Human label for each supported generation language. */
@@ -1023,6 +1037,224 @@ export async function runGeneration(
 
   // ---- Phase 7: agent self-polish — fix deformed / broken sections --------
   await polishSpec(spec, theme, emit, signal)
+
+  emit({ type: 'spec', spec })
+  return { spec, generatedImages }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Template mode                                                               */
+/* -------------------------------------------------------------------------- */
+
+const TEMPLATE_FILL_SYSTEM = `${AGENT_ROLE}
+
+You are filling a hand-crafted, high-end landing-page TEMPLATE with real, on-brand copy for a specific business. The visual layout is already designed and fixed — your ONLY job is to write the words (and pick lucide icon names) that go into it. Do NOT describe layout, do NOT output HTML or code.
+
+${TASTE_SKILL_GUIDE}
+
+Write copy like a world-class brand copywriter: specific, confident, benefit-led, never generic filler or lorem ipsum. Keep headlines short and punchy; keep body lines tight. Use the merchant's real product/industry details from the brief and images.
+
+${TEMPLATE_CONTENT_SCHEMA}`
+
+/** A landing-template image slot queued for gpt-image-2 generation. */
+type ResolvedSlot = { key: string; prompt: ImagePlanItem }
+
+/**
+ * Assigns images to a template's slots: user-uploaded images fill the primary
+ * (non-decorative) slots first, in order; everything else (decorative slots and
+ * any leftover primary slots) is queued for gpt-image-2 generation. Returns the
+ * `_img` slot→index map plus the generation plan.
+ */
+function resolveTemplateImages(
+  template: LandingTemplate,
+  merchant: MerchantInput,
+  theme: ReturnType<typeof getTheme>,
+  uploadedCount: number,
+): { img: Record<string, number>; toGenerate: ResolvedSlot[] } {
+  const palette = Object.values(theme.colors).join(', ')
+  const img: Record<string, number> = {}
+  const toGenerate: ResolvedSlot[] = []
+  let uploadedPtr = 0
+
+  for (const slot of template.imageSlots) {
+    if (!slot.decorative && uploadedPtr < uploadedCount) {
+      img[slot.key] = uploadedPtr++
+      continue
+    }
+    const isHero = /hero|cover|banner/i.test(slot.key) || /hero|cover|banner/i.test(slot.purpose)
+    const prompt: ImagePlanItem = {
+      purpose: slot.key,
+      aspectRatio: isHero ? '1536x1024' : '1024x1024',
+      alt: slot.purpose.slice(0, 80),
+      prompt: `${slot.purpose}. For brand "${merchant.name || template.name}"${
+        merchant.industry ? `, industry: ${merchant.industry}` : ''
+      }. Visual style: ${theme.mood}, palette ${palette}. High-end, professional, photographic, sharp, well-lit. Absolutely NO text, words, letters, numbers, logos, watermarks or UI.`,
+    }
+    toGenerate.push({ key: slot.key, prompt })
+  }
+
+  return { img, toGenerate }
+}
+
+/**
+ * Template mode: fill a curated, pre-designed landing template with brief-derived
+ * copy + the user's images (falling back to gpt-image-2 for missing/decorative
+ * slots). Far lighter than the creative pipeline — no theme/design search, no
+ * 21st.dev MCP, no bespoke JSX authoring — because the layout is already built.
+ */
+export async function runTemplateGeneration(
+  merchant: MerchantInput,
+  imageDataUrls: string[],
+  emit: EmitFn,
+  signal?: AbortSignal,
+): Promise<GenerationResult> {
+  const lang = languageLabel(merchant.language)
+  const template =
+    getLandingTemplate(merchant.landingTemplateId) ??
+    getLandingTemplate(DEFAULT_LANDING_TEMPLATE_ID)
+  if (!template) {
+    throw new Error('No landing templates are available')
+  }
+  const theme = getTheme(template.themeId)
+  emit({ type: 'template', id: template.id, name: template.name })
+
+  // ---- Phase 0: split the free-text brief into structured fields ----------
+  if (merchant.brief?.trim() && !(merchant.name && merchant.industry && merchant.description)) {
+    emit({ type: 'step', key: 'parse', label: 'Understanding your brief', status: 'active' })
+    merchant = await splitBrief(merchant)
+    emit({ type: 'step', key: 'parse', label: 'Understanding your brief', status: 'done' })
+  }
+
+  // ---- Phase 1: write the template content (copy + icon names) -------------
+  emit({
+    type: 'step',
+    key: 'fill',
+    label: `Writing copy for the "${template.name}" template`,
+    status: 'active',
+  })
+  emit({
+    type: 'log',
+    message: `Template: ${template.name} (${template.category}) — based on ${template.source.repo} ⭐${template.source.stars}`,
+  })
+
+  const fillUser: ChatMessage = {
+    role: 'user',
+    content: [
+      {
+        type: 'text',
+        text: [
+          `Fill the "${template.name}" template (${template.category}).`,
+          `Template intent: ${template.description}`,
+          '',
+          briefText(merchant, imageDataUrls.length),
+          '',
+          'Placeholder copy (for tone/length reference only — replace with real brand copy):',
+          JSON.stringify(template.placeholder),
+          '',
+          `Write ALL human-readable copy in ${lang}. Output ONLY the JSON content object.`,
+        ].join('\n'),
+      },
+      ...imageParts(imageDataUrls),
+    ],
+  }
+
+  let content: TemplateContent = { ...template.placeholder }
+  try {
+    const reply = await relayChat([
+      { role: 'system', content: TEMPLATE_FILL_SYSTEM.replaceAll('{LANGUAGE}', lang) },
+      fillUser,
+    ])
+    const parsed = extractJson(reply)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      content = { ...template.placeholder, ...(parsed as TemplateContent) }
+      emit({ type: 'log', message: 'Generated on-brand copy for every template slot' })
+    } else {
+      emit({ type: 'log', message: 'Copy generation returned no JSON; using placeholder copy' })
+    }
+  } catch (err) {
+    emit({
+      type: 'log',
+      message: `Copy generation failed (${
+        err instanceof Error ? err.message : 'error'
+      }); using placeholder copy`,
+    })
+  }
+  content.brand = merchant.name || content.brand || template.placeholder.brand || template.name
+  emit({
+    type: 'step',
+    key: 'fill',
+    label: `Writing copy for the "${template.name}" template`,
+    status: 'done',
+  })
+
+  // ---- Phase 2: resolve images (user images first, generate the rest) -----
+  const allImages = [...imageDataUrls]
+  const generatedImages: GeneratedImage[] = []
+  const { img, toGenerate } = resolveTemplateImages(template, merchant, theme, imageDataUrls.length)
+
+  const willGenerate = isImageGenConfigured() ? toGenerate : []
+  if (willGenerate.length) {
+    emit({
+      type: 'step',
+      key: 'image',
+      label: 'Generating images for the template (gpt-image-2)',
+      status: 'active',
+    })
+    emit({
+      type: 'log',
+      message: `Generating ${willGenerate.length} image(s) for slots: ${willGenerate
+        .map((s) => s.key)
+        .join(', ')}`,
+    })
+    const made = await generateSiteImages(
+      willGenerate.map((s) => s.prompt),
+      emit,
+      signal,
+    )
+    // `generateSiteImages` returns results in plan order; map each back to its
+    // slot. A failed slot simply stays unmapped and falls back to images[0].
+    willGenerate.forEach((slot, i) => {
+      const image = made[i]
+      if (image) {
+        img[slot.key] = allImages.length
+        allImages.push(image.dataUrl)
+        generatedImages.push(image)
+      }
+    })
+    emit({
+      type: 'step',
+      key: 'image',
+      label: 'Generating images for the template (gpt-image-2)',
+      status: 'done',
+    })
+  }
+
+  // Any slot still unmapped (no upload, generation off/failed) round-robins over
+  // whatever images we ended up with so the template never points at nothing.
+  const fallbackMap = defaultImageMap(template, allImages.length)
+  for (const slot of template.imageSlots) {
+    if (img[slot.key] === undefined && allImages.length) {
+      img[slot.key] = fallbackMap[slot.key] ?? 0
+    }
+  }
+  content._img = img
+
+  // ---- Phase 3: assemble + normalize the chromeless spec ------------------
+  emit({ type: 'step', key: 'write', label: 'Assembling your site', status: 'active' })
+  const built = buildTemplateSpec(template, content)
+  const validIds = THEMES.map((t) => t.id)
+  const validDesignIds = DESIGNS.map((d) => d.id)
+  const spec = normalizeSiteSpec(
+    built,
+    content.brand || merchant.name || template.name,
+    validIds,
+    template.themeId,
+    validDesignIds,
+    template.designId || DEFAULT_DESIGN_ID,
+  )
+  spec.chrome = 'none'
+  spec.templateRef = template.id
+  emit({ type: 'step', key: 'write', label: 'Assembling your site', status: 'done' })
 
   emit({ type: 'spec', spec })
   return { spec, generatedImages }
