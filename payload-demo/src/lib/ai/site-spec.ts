@@ -69,6 +69,13 @@ export type SpecSection =
       address?: string
       hours?: string
     }
+  /**
+   * Route 2 — a section whose layout is real JSX (AI-authored or pulled from
+   * 21st.dev), compiled and rendered live in a sandbox with a templated
+   * fallback. `fallback`, when present, is a normal section rendered if the JSX
+   * fails to compile or throws.
+   */
+  | { kind: 'jsx'; code: string; source?: string; fallback?: SpecSection }
 
 export type SpecPage = {
   /** url path under the site; '' is the home page */
@@ -108,6 +115,12 @@ export type SiteSpec = {
   themeReason?: string
   /** id of the design family (layout DNA) the AI picked for this brand */
   designId?: string
+  /**
+   * Route 2 — real JSX for the home hero, authored by the AI using brand copy +
+   * theme tokens and rendered live in a sandbox. Falls back to the templated
+   * hero if it fails to compile/render.
+   */
+  heroJsx?: string
   pages: SpecPage[]
   /** brand/category icons fetched from 21st.dev, surfaced as a trust strip */
   brandIcons?: BrandIcon[]
@@ -260,6 +273,17 @@ function normalizeSection(value: unknown): SpecSection | null {
       const heading = asString(s.heading)
       if (cta && heading) return { kind: 'cta', heading, body: asString(s.body) || undefined, cta }
       return null
+    }
+    case 'jsx': {
+      const code = asString(s.code)
+      if (!code) return null
+      const fallback = normalizeSection(s.fallback)
+      return {
+        kind: 'jsx',
+        code,
+        source: asString(s.source) || undefined,
+        fallback: fallback || undefined,
+      }
     }
     case 'contact': {
       return {

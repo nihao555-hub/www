@@ -1,5 +1,6 @@
 import { ICON_KEYWORDS } from '@/components/AiSite/Icon'
 
+import { compileJsx } from './jsx-sandbox'
 import { extractJson, relayChat, relayChatStream, type ChatMessage } from './relay'
 import { normalizeSiteSpec, type SiteSpec } from './site-spec'
 import { THEMES, DEFAULT_THEME_ID, getTheme, themeCatalogForPrompt } from './themes'
@@ -150,6 +151,30 @@ Rules:
 - Write compelling, specific B2B marketing copy (no lorem ipsum, no placeholders) referencing real details visible in the product photos. Quantify where possible.
 - ALL human-readable copy MUST be written in {LANGUAGE}.
 - Let the design inspiration notes below raise the quality bar, but still output ONLY the JSON.`
+
+// Route 2 — ask the model to author a real, self-contained JSX hero that we
+// compile and render live (v0/lovable style), instead of only filling a fixed
+// template. Output is raw JSX, no imports/exports needed.
+const HERO_JSX_SYSTEM = `You are a senior front-end engineer + designer (v0 / Lovable level). Write ONE self-contained React function component for a website HERO section. This code is compiled and rendered LIVE, so it must be correct, safe, and visually striking.
+
+Output rules (CRITICAL):
+- Output ONLY the component code. No markdown fences, no prose, no imports, no exports.
+- Define exactly: function Hero({ theme, images, headline, subheadline, badges, ctas }) { ... return ( ...jsx... ) }
+- Plain JSX only (no TypeScript types/annotations).
+- Do NOT import anything. These identifiers are already in scope: React hooks (useState, useEffect, useRef, useMemo), motion (from framer-motion, e.g. <motion.div>), AnimatePresence, all lucide-react icons by name (e.g. ArrowRight, CheckCircle2, ShieldCheck), and cn(). Do not use window/document/fetch/eval.
+- Style with a mix of Tailwind utility classes AND inline style using the theme tokens. Available theme.colors keys: background, foreground, card, cardForeground, primary, primaryForeground, secondary, muted, mutedForeground, accent, border. Example: style={{ background: theme.colors.background, color: theme.colors.foreground }}.
+- USE THE PROPS for all copy: render {headline}, {subheadline}, map {badges} and {ctas} (each cta = { label, url } -> an <a href={cta.url}>). Never hardcode placeholder/lorem text.
+- If images?.length, use images[0] as a hero image or background (e.g. <img src={images[0]} .../> or backgroundImage). Always guard with optional chaining.
+- Make it full-bleed (w-full), high-contrast, responsive, with generous spacing and a clear primary CTA button using theme.colors.primary / primaryForeground. Subtle motion is welcome but keep it tasteful and not blocking.
+- The component must render without runtime errors for any subset of props.
+
+Return the raw component code now.`
+
+function stripCodeFence(s: string): string {
+  const t = s.trim()
+  const fence = t.match(/^```(?:[a-zA-Z]+)?\n([\s\S]*?)\n```$/)
+  return (fence ? fence[1] : t).trim()
+}
 
 function briefText(merchant: MerchantInput, imageCount: number): string {
   return [
@@ -415,8 +440,58 @@ export async function runGeneration(
   if (componentRefs.length) {
     spec.componentRefs = componentRefs
   }
-
   emit({ type: 'step', key: 'write', label: 'Writing copy & assembling sections', status: 'done' })
+
+  // ---- Phase 4: author a bespoke, live-rendered JSX hero (Route 2) --------
+  emit({ type: 'step', key: 'jsx', label: 'Coding a bespoke hero (live JSX)', status: 'active' })
+  try {
+    const homeHero = spec.pages[0]?.hero
+    if (homeHero) {
+      const heroUser = [
+        briefText(merchant, imageDataUrls.length),
+        '',
+        `Theme tokens (use via theme.colors.*): ${JSON.stringify(theme.colors)}`,
+        `Design family vibe: ${design.name} — ${design.description}`,
+        '',
+        'Hero copy to render (already written in the target language — do not translate or invent new copy):',
+        JSON.stringify(
+          {
+            headline: homeHero.headline,
+            subheadline: homeHero.subheadline,
+            badges: homeHero.badges,
+            ctas: homeHero.ctas,
+          },
+          null,
+          2,
+        ),
+        '',
+        `There are ${imageDataUrls.length} image(s) available as the \`images\` prop (array of URLs).`,
+        'Output ONLY the Hero component code now.',
+      ].join('\n')
+      const heroReply = await relayChat([
+        { role: 'system', content: HERO_JSX_SYSTEM },
+        { role: 'user', content: heroUser },
+      ])
+      const code = stripCodeFence(heroReply)
+      // Validate server-side: compile must succeed and yield a component.
+      const compiled = compileJsx(code)
+      if (compiled) {
+        spec.heroJsx = code
+        emit({ type: 'log', message: 'Live JSX hero compiled OK — rendering real component' })
+      } else {
+        emit({ type: 'log', message: 'Live JSX hero invalid; falling back to templated hero' })
+      }
+    }
+  } catch (err) {
+    emit({
+      type: 'log',
+      message: `Live JSX hero failed to compile (${
+        err instanceof Error ? err.message : 'error'
+      }); using templated hero`,
+    })
+  }
+  emit({ type: 'step', key: 'jsx', label: 'Coding a bespoke hero (live JSX)', status: 'done' })
+
   emit({ type: 'spec', spec })
   return spec
 }
